@@ -76,12 +76,17 @@ void Tracker::HungarianMatching(const std::vector<std::vector<float>>& iou_matri
 }
 
 
-void Tracker::AssociateDetectionsToTrackers(const std::vector<cv::Rect>& detection,
+// void Tracker::AssociateDetectionsToTrackers(const std::vector<cv::Rect>& detection,
+//                                             std::map<int, Track>& tracks,
+//                                             std::map<int, cv::Rect>& matched,
+//                                             std::vector<cv::Rect>& unmatched_det,
+                                            // float iou_threshold) {
+void Tracker::AssociateDetectionsToTrackers(const std::vector<Eigen::VectorXd>& detection,
                                             std::map<int, Track>& tracks,
-                                            std::map<int, cv::Rect>& matched,
-                                            std::vector<cv::Rect>& unmatched_det,
-                                            float iou_threshold) {
-
+                                            std::map<int, Eigen::VectorXd>& matched,
+                                            std::vector<Eigen::VectorXd>& unmatched_det,
+                                            float iou_threshold = 0.3)
+{
     // Set all detection as unmatched if no tracks existing
     if (tracks.empty()) {
         for (const auto& det : detection) {
@@ -134,24 +139,25 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<cv::Rect>& detecti
 }
 
 
-void Tracker::Run(const std::vector<cv::Rect>& detections) {
+// void Tracker::Run(const std::vector<cv::Rect>& detections) {
+void Tracker::Run(const std::vector<Eigen::VectorXd>& detections) {
 
     /*** Predict internal tracks from previous frame ***/
     for (auto &track : tracks_) {
         track.second.Predict();
     }
 
-    // Hash-map between track ID and associated detection bounding box
-    std::map<int, cv::Rect> matched;
+    // Hash-map between track ID and associated detection
+    std::map<int, Eigen::VectorXd> matched;
     // vector of unassociated detections
-    std::vector<cv::Rect> unmatched_det;
+    std::vector<Eigen::VectorXd> unmatched_det;
 
     // return values - matched, unmatched_det
     if (!detections.empty()) {
         AssociateDetectionsToTrackers(detections, tracks_, matched, unmatched_det);
     }
 
-    /*** Update tracks with associated bbox ***/
+    /*** Update tracks with associated detection ***/
     for (const auto &match : matched) {
         const auto &ID = match.first;
         tracks_[ID].Update(match.second);

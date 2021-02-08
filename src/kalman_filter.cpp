@@ -14,6 +14,7 @@ KalmanFilter::KalmanFilter(unsigned int num_states, unsigned int num_obs) :
 
     // Error covariance matrix P
     P_ = Eigen::MatrixXd::Zero(num_states, num_states);
+
     // Predicted(a prior) error covariance matrix
     P_predict_ = Eigen::MatrixXd::Zero(num_states, num_states);
 

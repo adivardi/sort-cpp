@@ -1,53 +1,76 @@
 #include "track.h"
 
+// constexpr unsigned int num_states = 8; // state - center_x, center_y, width, height, v_cx, v_cy, v_width, v_height
+constexpr unsigned int num_states = 6;    // state - center_x, center_y, center_z, v_cx, v_cy, v_cz
+constexpr unsigned int num_obs = 3;       // observation - center_x, center_y, center_z
 
-Track::Track() : kf_(8, 4) {
+Track::Track() : kf_(num_states, num_obs) {
 
     /*** Define constant velocity model ***/
-    // state - center_x, center_y, width, height, v_cx, v_cy, v_width, v_height
+    // x_k+1 = x_k + v_k
+    // v_k+1 = v_k
+    // no input (drop BkUk from prediction state estimate)
+
+    // // state - center_x, center_y, width, height, v_cx, v_cy, v_width, v_height
+    // kf_.F_ <<
+    //         1, 0, 0, 0, 1, 0, 0, 0,
+    //         0, 1, 0, 0, 0, 1, 0, 0,
+    //         0, 0, 1, 0, 0, 0, 1, 0,
+    //         0, 0, 0, 1, 0, 0, 0, 1,
+    //         0, 0, 0, 0, 1, 0, 0, 0,
+    //         0, 0, 0, 0, 0, 1, 0, 0,
+    //         0, 0, 0, 0, 0, 0, 1, 0,
+    //         0, 0, 0, 0, 0, 0, 0, 1;
+
+    // state - state - center_x, center_y, center_z, v_cx, v_cy, v_cz
     kf_.F_ <<
-           1, 0, 0, 0, 1, 0, 0, 0,
-            0, 1, 0, 0, 0, 1, 0, 0,
-            0, 0, 1, 0, 0, 0, 1, 0,
-            0, 0, 0, 1, 0, 0, 0, 1,
-            0, 0, 0, 0, 1, 0, 0, 0,
-            0, 0, 0, 0, 0, 1, 0, 0,
-            0, 0, 0, 0, 0, 0, 1, 0,
-            0, 0, 0, 0, 0, 0, 0, 1;
+            1, 0, 0, 1, 0, 0,
+            0, 1, 0, 0, 1, 0,
+            0, 0, 1, 0, 0, 1,
+            0, 0, 0, 1, 0, 0,
+            0, 0, 0, 0, 1, 0,
+            0, 0, 0, 0, 0, 1;
 
+    // Error covariance matrix P
     // Give high uncertainty to the unobservable initial velocities
+
+    // kf_.P_ <<
+    //        10, 0, 0, 0, 0, 0, 0, 0,
+    //         0, 10, 0, 0, 0, 0, 0, 0,
+    //         0, 0, 10, 0, 0, 0, 0, 0,
+    //         0, 0, 0, 10, 0, 0, 0, 0,
+    //         0, 0, 0, 0, 10000, 0, 0, 0,
+    //         0, 0, 0, 0, 0, 10000, 0, 0,
+    //         0, 0, 0, 0, 0, 0, 10000, 0,
+    //         0, 0, 0, 0, 0, 0, 0, 10000;
     kf_.P_ <<
-           10, 0, 0, 0, 0, 0, 0, 0,
-            0, 10, 0, 0, 0, 0, 0, 0,
-            0, 0, 10, 0, 0, 0, 0, 0,
-            0, 0, 0, 10, 0, 0, 0, 0,
-            0, 0, 0, 0, 10000, 0, 0, 0,
-            0, 0, 0, 0, 0, 10000, 0, 0,
-            0, 0, 0, 0, 0, 0, 10000, 0,
-            0, 0, 0, 0, 0, 0, 0, 10000;
+           10, 0,  0,  0,     0,     0,
+            0, 10, 0,  0,     0,     0,
+            0, 0,  10, 0,     0,     0,
+            0, 0,  0,  10000, 0,     0,
+            0, 0,  0,  0,     10000, 0,
+            0, 0,  0,  0,     0,     10000;
 
-
+    // Observation matrix   num_obs, num_states
     kf_.H_ <<
-           1, 0, 0, 0, 0, 0, 0, 0,
-            0, 1, 0, 0, 0, 0, 0, 0,
-            0, 0, 1, 0, 0, 0, 0, 0,
-            0, 0, 0, 1, 0, 0, 0, 0;
+            1, 0, 0, 0, 0, 0,
+            0, 1, 0, 0, 0, 0,
+            0, 0, 1, 0, 0, 0;
 
+    // Covariance matrix of process noise   num_states, num_states
     kf_.Q_ <<
-           1, 0, 0, 0, 0, 0, 0, 0,
-            0, 1, 0, 0, 0, 0, 0, 0,
-            0, 0, 1, 0, 0, 0, 0, 0,
-            0, 0, 0, 1, 0, 0, 0, 0,
-            0, 0, 0, 0, 0.01, 0, 0, 0,
-            0, 0, 0, 0, 0, 0.01, 0, 0,
-            0, 0, 0, 0, 0, 0, 0.0001, 0,
-            0, 0, 0, 0, 0, 0, 0, 0.0001;
+            1, 0, 0, 0,    0,    0,
+            0, 1, 0, 0,    0,    0,
+            0, 0, 1, 0,    0,    0,
+            0, 0, 0, 0.01, 0,    0,
+            0, 0, 0, 0,    0.01, 0,
+            0, 0, 0, 0,    0,    0.01;
 
+    // Covariance matrix of observation noise   num_obs, num_obs
     kf_.R_ <<
-           1, 0, 0,  0,
-            0, 1, 0,  0,
-            0, 0, 10, 0,
-            0, 0, 0,  10;
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1;
 }
 
 
@@ -65,37 +88,57 @@ void Track::Predict() {
 }
 
 
-// Update matched trackers with assigned detections
-void Track::Update(const cv::Rect& bbox) {
+// // Update matched trackers with assigned detections
+// void Track::Update(const cv::Rect& bbox) {
 
+//     // get measurement update, reset coast cycle count
+//     coast_cycles_ = 0;
+//     // accumulate hit streak count
+//     hit_streak_++;
+
+//     // observation - center_x, center_y, area, ratio
+//     Eigen::VectorXd observation = ConvertBboxToObservation(bbox);
+//     kf_.Update(observation);
+// }
+
+// Update matched trackers with assigned detections
+void Track::Update(const Eigen::VectorXd observation)
+{
     // get measurement update, reset coast cycle count
     coast_cycles_ = 0;
     // accumulate hit streak count
     hit_streak_++;
 
-    // observation - center_x, center_y, area, ratio
-    Eigen::VectorXd observation = ConvertBboxToObservation(bbox);
+    // observation - center_x, center_y, center_z
     kf_.Update(observation);
-
-
 }
 
+// // Create and initialize new trackers for unmatched detections, with initial bounding box
+// void Track::Init(const cv::Rect &bbox) {
+//     kf_.x_.head(4) << ConvertBboxToObservation(bbox);
+//     hit_streak_++;
+// }
 
-// Create and initialize new trackers for unmatched detections, with initial bounding box
-void Track::Init(const cv::Rect &bbox) {
-    kf_.x_.head(4) << ConvertBboxToObservation(bbox);
+// Create and initialize new trackers for unmatched detections, with initial observation
+void Track::Init(const Eigen::VectorXd observation)
+{
+    kf_.x_.head(3) << observation;
     hit_streak_++;
 }
 
+// /**
+//  * Returns the current bounding box estimate
+//  * @return
+//  */
+// cv::Rect Track::GetStateAsBbox() const {
+//     return ConvertStateToBbox(kf_.x_);
+// }
 
-/**
- * Returns the current bounding box estimate
- * @return
- */
-cv::Rect Track::GetStateAsBbox() const {
-    return ConvertStateToBbox(kf_.x_);
+
+Eigen::VectorXd Track::GetState() const
+{
+    return xf_.x_;
 }
-
 
 float Track::GetNIS() const {
     return kf_.NIS_;

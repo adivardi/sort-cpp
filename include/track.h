@@ -11,10 +11,15 @@ public:
     // Destructor
     ~Track() = default;
 
-    void Init(const cv::Rect& bbox);
+    // void Init(const cv::Rect& bbox);
     void Predict();
-    void Update(const cv::Rect& bbox);
-    cv::Rect GetStateAsBbox() const;
+    // void Update(const cv::Rect& bbox);
+    // cv::Rect GetStateAsBbox() const;
+
+    void Init(const Eigen::VectorXd observation);
+    void Update(const Eigen::VectorXd observation);
+    Eigen::VectorXd GetState() const;
+
     float GetNIS() const;
 
     int coast_cycles_ = 0, hit_streak_ = 0;
