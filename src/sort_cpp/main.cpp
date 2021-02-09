@@ -121,7 +121,6 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   {
     Eigen::Vector4f centroid_homogenous;
     pcl::compute3DCentroid(*processed_cloud, cluster_ids, centroid_homogenous); // in homogenous coords
-    std::cout << "centroid homo: " << centroid_homogenous << std::endl;
 
     Eigen::VectorXd centroid_xyz(3);
     centroid_xyz << centroid_homogenous(0), centroid_homogenous(1), centroid_homogenous(2);
@@ -136,21 +135,31 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
     clusters.push_back(cluster_pointcloud);
   }
 
+  std::cout << "done clustering" << std::endl;
+
   /*** Run SORT tracker ***/
   float dist_threshold = 0.3;
   tracker.Run(clusters_centroids, dist_threshold);
   const auto tracks = tracker.GetTracks();
   /*** Tracker update done ***/
 
+  std::cout << "done tracking" << std::endl;
+
   if (VIS_CLUSTERS)
   {
-    for (long unsigned int i = 0; i < clusters_pubs_.size(); i++)
+    for (long unsigned int i = 0; i < clusters.size(); i++)
     {
+      if (i >= clusters_pubs_.size())
+      {
+        break;
+      }
       clusters[i]->header.frame_id = map_frame;
       pcl_conversions::toPCL(ros::Time::now(), clusters[i]->header.stamp);
       clusters_pubs_[i].publish(clusters[i]);
     }
   }
+    std::cout << "done vis" << std::endl;
+
 }
 
 int
