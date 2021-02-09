@@ -23,7 +23,7 @@
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
 
-#include "sort-cpp/tracker.h"
+#include "sort_cpp/tracker.h"
 
 bool VIS_CLUSTERS = true;
 
@@ -123,7 +123,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
     pcl::compute3DCentroid(*processed_cloud, cluster_ids, centroid_homogenous); // in homogenous coords
     std::cout << "centroid homo: " << centroid_homogenous << std::endl;
 
-    Eigen::VectorXd centroid_xyz;
+    Eigen::VectorXd centroid_xyz(3);
     centroid_xyz << centroid_homogenous(0), centroid_homogenous(1), centroid_homogenous(2);
     std::cout << "centroid xyz: " << centroid_xyz << std::endl;
 
@@ -137,7 +137,8 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   }
 
   /*** Run SORT tracker ***/
-  tracker.Run(clusters_centroids);
+  float dist_threshold = 0.3;
+  tracker.Run(clusters_centroids, dist_threshold);
   const auto tracks = tracker.GetTracks();
   /*** Tracker update done ***/
 
@@ -156,7 +157,7 @@ int
 main(int argc, char** argv)
 {
   // ROS init
-  ros::init(argc, argv, "kf_tracker");
+  ros::init(argc, argv, "sort_cpp_tracker");
   ros::NodeHandle nh;
 
   // Publishers to publish the state of the objects (pos and vel)

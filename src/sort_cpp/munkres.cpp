@@ -17,7 +17,7 @@
  *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
  */
 
-#include "sort-cpp/munkres.h"
+#include "sort_cpp/munkres.h"
 
 template class Munkres<double>;
 template class Munkres<float>;
