@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="sort_cpp" name="sort_cpp" type="sort_cpp">
+    <remap from="pointcloud" to="/sensors/lidar/front_mid/point_cloud"/>
+  </node>
+
+</launch>
