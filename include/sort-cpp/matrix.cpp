@@ -100,7 +100,7 @@ Matrix<T>::operator= (const Matrix<T> &other) {
     m_rows = 0;
     m_columns = 0;
   }
-  
+
   return *this;
 }
 
