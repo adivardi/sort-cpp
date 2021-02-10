@@ -1,5 +1,8 @@
 #include "sort_cpp/tracker.h"
 
+#include <Eigen/Dense>
+#include <map>
+
 
 Tracker::Tracker() {
     id_ = 0;
@@ -187,10 +190,10 @@ void Tracker::HungarianMatching(const std::vector<std::vector<float>>& dist_matr
 //     }
 // }
 
-void Tracker::AssociateDetectionsToTrackers(const std::vector<Eigen::VectorXd>& detection,
+void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detection,
                                             std::map<int, Track>& tracks,
-                                            std::map<int, Eigen::VectorXd>& matched,
-                                            std::vector<Eigen::VectorXd>& unmatched_det,
+                                            std::map<int, Detection>& matched,
+                                            std::vector<Detection>& unmatched_det,
                                             float dist_threshold)
 {
     // Set all detection as unmatched if no tracks existing
@@ -215,7 +218,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Eigen::VectorXd>& 
     for (size_t i = 0; i < detection.size(); i++) {
         size_t j = 0;
         for (const auto& trk : tracks) {
-            dist_matrix[i][j] = CalculateDistSquared(detection[i], trk.second);
+            dist_matrix[i][j] = CalculateDistSquared(detection[i].centroid, trk.second);
             j++;
         }
     }
@@ -247,7 +250,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Eigen::VectorXd>& 
 
 
 // void Tracker::Run(const std::vector<cv::Rect>& detections) {
-void Tracker::Run(const std::vector<Eigen::VectorXd>& detections, float dist_threshold) {
+std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& detections, float dist_threshold) {
 
     /*** Predict internal tracks from previous frame ***/
     for (auto &track : tracks_) {
@@ -255,27 +258,34 @@ void Tracker::Run(const std::vector<Eigen::VectorXd>& detections, float dist_thr
     }
 
     // Hash-map between track ID and associated detection
-    std::map<int, Eigen::VectorXd> matched;
+    std::map<int, Detection> matched;
     // vector of unassociated detections
-    std::vector<Eigen::VectorXd> unmatched_det;
+    std::vector<Detection> unmatched_det;
 
     // return values - matched, unmatched_det
     if (!detections.empty()) {
         AssociateDetectionsToTrackers(detections, tracks_, matched, unmatched_det, dist_threshold);
     }
 
+    std::map<int, Detection> track_to_detection_associations;
+
     /*** Update tracks with associated detection ***/
     for (const auto &match : matched) {
         const auto &ID = match.first;
-        tracks_[ID].Update(match.second);
+        tracks_[ID].Update(match.second.centroid);
+
+        track_to_detection_associations[ID] = match.second;
     }
 
     /*** Create new tracks for unmatched detections ***/
     for (const auto &det : unmatched_det) {
         Track tracker;
-        tracker.Init(det);
+        tracker.Init(det.centroid);
         // Create new track and generate new ID
-        tracks_[id_++] = tracker;
+        tracks_[id_] = tracker;
+
+        track_to_detection_associations[id_] = det;
+        id_++;
     }
 
     /*** Delete lose tracked tracks ***/
@@ -286,6 +296,8 @@ void Tracker::Run(const std::vector<Eigen::VectorXd>& detections, float dist_thr
             it++;
         }
     }
+
+    return track_to_detection_associations;
 }
 
 

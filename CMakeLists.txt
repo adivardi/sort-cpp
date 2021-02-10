@@ -10,6 +10,7 @@ set(PROJECT_CATKIN_DEPS
     roscpp
     pcl_conversions
     pcl_ros
+    tf
     visualization_msgs
 )
 
