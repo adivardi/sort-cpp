@@ -31,7 +31,7 @@ double Tracker::CalculateDistSquared(const Eigen::VectorXd& det, const Track& tr
     double delta_y = track_state(1) - det(1);
     double delta_z = track_state(2) - det(2);
 
-    double dist_sq = delta_x * delta_y + delta_y * delta_x + delta_z * delta_z;
+    double dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z;
     return dist_sq;
 }
 
