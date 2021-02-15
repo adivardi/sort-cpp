@@ -33,13 +33,14 @@ bool PRINT_TRACKS = true;
 typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
-std::string map_frame = "base_link";
+std::string tracking_frame = "base_link";
 std::string base_frame = "base_link";
 float voxel_size = 0.05;
 float z_min = 0.5;
 float z_max = 2.5;
 float clustering_tolerance = 0.5;
 float min_pts_in_cluster = 50;
+float distance_thresh = 1.0;
 
 // create SORT tracker
 Tracker tracker;
@@ -72,8 +73,8 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   // transform_pointcloud to map frame  // TODO actually needed?
   tf::TransformListener tf_listener_;
   tf_listener_.waitForTransform(
-      processed->header.frame_id, map_frame, fromPCL(processed->header).stamp, ros::Duration(5.0));
-  pcl_ros::transformPointCloud<PointXYZI>(map_frame, *processed, *processed, tf_listener_);
+      processed->header.frame_id, tracking_frame, fromPCL(processed->header).stamp, ros::Duration(5.0));
+  pcl_ros::transformPointCloud<PointXYZI>(tracking_frame, *processed, *processed, tf_listener_);
 
   // voxel filter
   pcl::VoxelGrid<PointXYZI> vox_filter;
@@ -163,7 +164,7 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
       text.pose.orientation.y = q.y();
       text.pose.orientation.z = q.z();
 
-      text.scale.z = 1;
+      text.scale.z = 3;
 
       array.markers.push_back(text);
     }
@@ -178,7 +179,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   PointCloud::Ptr processed_cloud(new PointCloud);
   processPointCloud(input_cloud, processed_cloud);
   processed_cloud->header = input_cloud->header;
-  processed_cloud->header.frame_id = map_frame;
+  processed_cloud->header.frame_id = tracking_frame;
   // std::cout << "process frame: " << processed_cloud->header.frame_id << std::endl;
 
   // publish processed pointcloud
@@ -236,8 +237,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   }
 
   /*** Run SORT tracker ***/
-  float dist_threshold = 1.0;
-  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, dist_threshold);
+  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, distance_thresh);
   const auto tracks = tracker.GetTracks();
   /*** Tracker update done ***/
 
@@ -257,7 +257,8 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
           std::cout << "track id: " << trk.first
                     << ", cluster id: " << track_to_detection_associations[trk.first].cluster_id
                     << ", state: " << state(0) << ", " << state(1) << ", " << state(2)
-                    << ", v:" << state(3) << ", " << state(4) << ", " << state(5)
+                    << ", v: " << std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5))
+                    << " (" << state(3) << ", " << state(4) << ", " << state(5) << ")"
                     << " Hit Streak = " << trk.second.hit_streak_
                     << " Coast Cycles = " << trk.second.coast_cycles_ << std::endl;
       }
