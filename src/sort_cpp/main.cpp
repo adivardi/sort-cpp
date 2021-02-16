@@ -21,7 +21,8 @@
 #include <pcl_ros/impl/transforms.hpp>
 #include <pcl_ros/transforms.h>
 #include <ros/ros.h>
-#include <tf/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/MarkerArray.h>
 
 #include "sort_cpp/tracker.h"
@@ -33,14 +34,15 @@ bool PRINT_TRACKS = true;
 typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
-std::string tracking_frame = "base_link";
-std::string base_frame = "base_link";
+std::string tracking_frame = "map";
 float voxel_size = 0.05;
 float z_min = 0.5;
 float z_max = 2.5;
 float clustering_tolerance = 0.5;
 float min_pts_in_cluster = 50;
 float distance_thresh = 1.0;
+
+static tf2_ros::Buffer tf_buffer_;
 
 // create SORT tracker
 Tracker tracker;
@@ -70,11 +72,26 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   std::vector<int> indices;
   pcl::removeNaNFromPointCloud(*input, *processed, indices);
 
+  std::cout << "input frame_id: " << input->header.frame_id << std::endl;
+
   // transform_pointcloud to map frame  // TODO actually needed?
-  tf::TransformListener tf_listener_;
-  tf_listener_.waitForTransform(
-      processed->header.frame_id, tracking_frame, fromPCL(processed->header).stamp, ros::Duration(5.0));
-  pcl_ros::transformPointCloud<PointXYZI>(tracking_frame, *processed, *processed, tf_listener_);
+  tf2_ros::TransformListener tf_listener_(tf_buffer_);
+  try
+  {
+    constexpr double transform_wait_time {0.2};
+    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
+        tracking_frame, processed->header.frame_id, fromPCL(processed->header).stamp, ros::Duration{transform_wait_time});
+
+    // std::cout << "transform: " << transform.transform.translation.x << std::endl;
+    pcl_ros::transformPointCloud<PointXYZI>(*processed, *processed, transform.transform);
+    processed->header.frame_id = tracking_frame;
+    std::cout << "process frame_id: " << processed->header.frame_id << std::endl;
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_ERROR_STREAM(ex.what());
+    return;
+  }
 
   // voxel filter
   pcl::VoxelGrid<PointXYZI> vox_filter;
@@ -137,7 +154,8 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
                                       + state(5) * state(5));
 
       constexpr double k_arrow_shaft_diameter = 0.15;
-      heading.scale.x = speed;
+      float scale = 3.0;
+      heading.scale.x = speed * scale;
       heading.scale.y = k_arrow_shaft_diameter;
       heading.scale.z = k_arrow_shaft_diameter;
 
@@ -164,7 +182,7 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
       text.pose.orientation.y = q.y();
       text.pose.orientation.z = q.z();
 
-      text.scale.z = 3;
+      text.scale.z = 2;
 
       array.markers.push_back(text);
     }
@@ -176,11 +194,9 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
 void
 cloud_cb(const PointCloud::ConstPtr& input_cloud)
 {
+  std::cout << "------------------------------" << std::endl;
   PointCloud::Ptr processed_cloud(new PointCloud);
   processPointCloud(input_cloud, processed_cloud);
-  processed_cloud->header = input_cloud->header;
-  processed_cloud->header.frame_id = tracking_frame;
-  // std::cout << "process frame: " << processed_cloud->header.frame_id << std::endl;
 
   // publish processed pointcloud
   proccessed_pub_.publish(processed_cloud);
@@ -203,8 +219,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   /* Extract the clusters out of pc and save indices in clusters_indices.*/
   eucl_clustering.extract(clusters_indices);
 
-  std::cout << "------------------------------" << std::endl;
-  std::cout << "cluster nu: " << clusters_indices.size() << std::endl;
+  std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
 
   // get cluster centroid
   std::map<int, PointCloud::Ptr> clusters;
@@ -302,6 +317,21 @@ main(int argc, char** argv)
 
   // Publishers to publish the state of the objects (pos and vel)
   // objState1=nh.advertise<geometry_msgs::Twist> ("obj_1",1);
+
+  // get 1st transform
+  tf2_ros::TransformListener tf_listener_(tf_buffer_);
+  try
+  {
+    constexpr double transform_wait_time {10.0};
+    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
+        tracking_frame, "front_mid", ros::Time{0.0}, ros::Duration{transform_wait_time});
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_ERROR_STREAM(ex.what());
+    throw ex;
+  }
+  std::cout << "got transform!" << std::endl;
 
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber pointcloud_sub = nh.subscribe("pointcloud", 1, cloud_cb);
