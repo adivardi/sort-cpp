@@ -28,7 +28,7 @@
 #include "sort_cpp/tracker.h"
 #include "sort_cpp/utils.h"
 
-bool VIS_CLUSTERS = true;
+bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
 typedef pcl::PointXYZI PointXYZI;
@@ -285,9 +285,9 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
     publishTrackAsMarker(processed_cloud->header.frame_id, tracks);
   }
 
-  if (VIS_CLUSTERS)
+  if (VIS_CLUSTERS_BY_TRACKS)
   {
-    int i = 0;
+    long unsigned int i = 0;
     for (auto &trk : tracks)
     {
       if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
@@ -304,6 +304,17 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
         i++;
       }
+    }
+  }
+  else
+  {
+    for (long unsigned int i = 0; i < clusters.size(); i++)
+    {
+      if (i >= clusters_pubs_.size())
+      {
+        break;
+      }
+      clusters_pubs_[i].publish(clusters[i]);
     }
   }
 }
@@ -331,7 +342,7 @@ main(int argc, char** argv)
     ROS_ERROR_STREAM(ex.what());
     throw ex;
   }
-  std::cout << "got transform!" << std::endl;
+  std::cout << "got 1st transform!" << std::endl;
 
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber pointcloud_sub = nh.subscribe("pointcloud", 1, cloud_cb);
