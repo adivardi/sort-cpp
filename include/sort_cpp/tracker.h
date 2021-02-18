@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <optional>
 #include <map>
 #include <opencv2/core.hpp>
 #include <Eigen/Dense>
@@ -56,10 +58,15 @@ public:
 
     std::map<int, Track> GetTracks();
 
+    double GetDT();
+
 private:
     // Hash-map between ID and corresponding tracker
     std::map<int, Track> tracks_;
 
     // Assigned ID for each bounding box
     int id_;
+
+    std::optional<std::chrono::high_resolution_clock::time_point> prev_update_time_;
+    double dt_;
 };

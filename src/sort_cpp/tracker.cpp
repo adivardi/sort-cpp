@@ -4,7 +4,8 @@
 #include <map>
 
 
-Tracker::Tracker() {
+Tracker::Tracker() : dt_{0.0}
+{
     id_ = 0;
 }
 
@@ -252,6 +253,16 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
 // void Tracker::Run(const std::vector<cv::Rect>& detections) {
 std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& detections, float dist_threshold) {
 
+    auto new_update_time = std::chrono::high_resolution_clock::now();
+    if (prev_update_time_)
+    {
+        // dt_ = (new_update_time - prev_update_time_).toNSec() * 1e-9; // in s
+        auto microsec = std::chrono::duration_cast<std::chrono::microseconds>(new_update_time - prev_update_time_.value()).count(); // int64_t
+        dt_ = static_cast<double>(microsec) * 1e-6;
+    }
+
+    prev_update_time_ = std::make_optional(new_update_time);
+
     /*** Predict internal tracks from previous frame ***/
     for (auto &track : tracks_) {
         track.second.Predict();
@@ -303,4 +314,9 @@ std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& det
 
 std::map<int, Track> Tracker::GetTracks() {
     return tracks_;
+}
+
+double Tracker::GetDT()
+{
+    return dt_;
 }
