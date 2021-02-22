@@ -9,6 +9,9 @@
 #include <chrono>
 
 // #include <pcl/filters/extract_indices.h>
+#include <pcl/features/don.h>
+#include <pcl/features/normal_3d_omp.h>
+#include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree.h>
@@ -37,12 +40,18 @@ typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
 std::string tracking_frame = "map";
+
 float voxel_size = 0.05;
 float z_min = 0.45;
 float z_max = 2.5;
 float clustering_tolerance = 2.5;
-float min_pts_in_cluster = 30;
+float min_pts_in_cluster = 5;
 float clustering_dist_2d_thresh = 0.7;
+
+bool don_filter = false;
+double don_small_scale = 0.5;   // The small scale to use in the DoN filter.
+double don_large_scale = 2.0;   // The large scale to use in the DoN filter.
+double don_angle_thresh = 0.1; // The minimum DoN magnitude to threshold by
 
 float tracking_distance_thresh = 1.0;
 
@@ -69,6 +78,71 @@ filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   pass_filter.setFilterLimits(z_min, z_max);
   // pass_filter.setFilterLimitsNegative(true);
   pass_filter.filter(*processed);
+}
+
+void differneceOfNormalsFiltering(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+{
+  std::cout << "input: " << input->points.size() << std::endl;
+
+  pcl::search::KdTree<PointXYZI>::Ptr tree(new pcl::search::KdTree<PointXYZI>);
+  tree->setInputCloud(input);
+
+  // Compute normals using both small and large scales at each point
+  pcl::NormalEstimationOMP<PointXYZI, pcl::PointNormal> normal_estimation;
+  normal_estimation.setInputCloud(input);
+  normal_estimation.setSearchMethod(tree);
+
+  // setting viewpoint is very important, so that we can ensure normals are all pointed in the same direction!
+  normal_estimation.setViewPoint(std::numeric_limits<float>::max(),
+                                 std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+
+  // calculate normals with the small scale
+  pcl::PointCloud<pcl::PointNormal>::Ptr normals_small_scale(new pcl::PointCloud<pcl::PointNormal>);
+  normal_estimation.setRadiusSearch(don_small_scale);
+  normal_estimation.compute(*normals_small_scale);
+
+  // calculate normals with the large scale
+  pcl::PointCloud<pcl::PointNormal>::Ptr normals_large_scale(new pcl::PointCloud<pcl::PointNormal>);
+  normal_estimation.setRadiusSearch(don_large_scale);
+  normal_estimation.compute(*normals_large_scale);
+
+  // Create output cloud for DoN results
+  pcl::PointCloud<pcl::PointNormal>::Ptr doncloud(new pcl::PointCloud<pcl::PointNormal>);
+  pcl::copyPointCloud(*input, *doncloud);
+
+  // Create DoN operator
+  pcl::DifferenceOfNormalsEstimation<PointXYZI, pcl::PointNormal, pcl::PointNormal> diffnormals_estimator;
+  diffnormals_estimator.setInputCloud(input);
+  diffnormals_estimator.setNormalScaleLarge(normals_large_scale);
+  diffnormals_estimator.setNormalScaleSmall(normals_small_scale);
+
+  if (!diffnormals_estimator.initCompute())
+  {
+    std::cerr << "Error: Could not initialize DoN feature operator" << std::endl;
+    exit (EXIT_FAILURE);
+  }
+
+  // Compute DoN
+  diffnormals_estimator.computeFeature(*doncloud);
+
+  // filter based on DoN
+  pcl::ConditionOr<pcl::PointNormal>::Ptr range_cond(new pcl::ConditionOr<pcl::PointNormal>());
+  // filter curvature (= l2 norm of the normal ?) > thresh => keep only points with high curvature
+  range_cond->addComparison(pcl::FieldComparison<pcl::PointNormal>::ConstPtr (
+                              new pcl::FieldComparison<pcl::PointNormal> ("curvature", pcl::ComparisonOps::GT, don_angle_thresh))
+                            );
+  // Build the filter
+  pcl::ConditionalRemoval<pcl::PointNormal> conditional_filter;
+  conditional_filter.setCondition(range_cond);
+  conditional_filter.setInputCloud(doncloud);
+
+  pcl::PointCloud<pcl::PointNormal>::Ptr doncloud_filtered (new pcl::PointCloud<pcl::PointNormal>);
+
+  // Apply filter
+  conditional_filter.filter(*doncloud_filtered);
+
+  pcl::copyPointCloud<pcl::PointNormal, PointXYZI>(*doncloud_filtered, *processed);
+  std::cout << "dof: " << processed->points.size() << std::endl;
 }
 
 void
@@ -106,13 +180,23 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 
   // remove ground
   filterGround(processed, processed);
+
+  if (don_filter)
+  {
+    differneceOfNormalsFiltering(processed, processed);
+  }
 }
 
 bool
 clusterCondition(const PointXYZI& a, const PointXYZI& b, float  /*dist*/)
 {
+  // NOTE very similar results between 2D and 3D
+
   float dist_2d_sq = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
   return (dist_2d_sq < (clustering_dist_2d_thresh * clustering_dist_2d_thresh));
+
+  // float dist_3d_sq = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z);
+  // return (dist_3d_sq < (1.6 * 1.6));
 }
 
 void
