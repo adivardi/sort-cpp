@@ -100,30 +100,30 @@ void Tracker::HungarianMatching(const std::vector<std::vector<float>>& dist_matr
         }
     }
 
-//    // Display begin matrix state.
-//    for (size_t row = 0 ; row < nrows ; row++) {
-//        for (size_t col = 0 ; col < ncols ; col++) {
-//            std::cout.width(10);
-//            std::cout << matrix(row,col) << ",";
-//        }
-//        std::cout << std::endl;
-//    }
-//    std::cout << std::endl;
+   // Display begin matrix state.
+   for (size_t row = 0 ; row < nrows ; row++) {
+       for (size_t col = 0 ; col < ncols ; col++) {
+           std::cout.width(10);
+           std::cout << matrix(row,col) << ", ";
+       }
+       std::cout << ";;" << std::endl;
+   }
+   std::cout << std::endl;
 
 
     // Apply Kuhn-Munkres algorithm to matrix.
     Munkres<float> m;
     m.solve(matrix);
 
-//    // Display solved matrix.
-//    for (size_t row = 0 ; row < nrows ; row++) {
-//        for (size_t col = 0 ; col < ncols ; col++) {
-//            std::cout.width(2);
-//            std::cout << matrix(row,col) << ",";
-//        }
-//        std::cout << std::endl;
-//    }
-//    std::cout << std::endl;
+   // Display solved matrix.
+   for (size_t row = 0 ; row < nrows ; row++) {
+       for (size_t col = 0 ; col < ncols ; col++) {
+           std::cout.width(2);
+           std::cout << matrix(row,col) << ", ";
+       }
+       std::cout << std::endl;
+   }
+   std::cout << ";;" << std::endl;
 
     for (size_t i = 0 ; i < nrows ; i++) {
         for (size_t j = 0 ; j < ncols ; j++) {
@@ -231,6 +231,33 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
         }
     }
 
+    // find actual best association for pedestrian TODO remove
+    for (size_t i = 0; i < detection.size(); i++)
+    {
+        if (detection[i].centroid(0) < 60 && detection[i].centroid(0) > 56 && detection[i].centroid(1) < 52 && detection[i].centroid(1) > 50)
+        {
+            std::cout << "detection: " << detection[i].centroid << std::endl;
+            // std::cout << "dist row: " << dist_matrix[i] << std::endl;
+
+            float mind = 10000;
+            int minid;
+            size_t jj = 0;
+            int minjj = 0;
+            for (const auto& trk : tracks)
+            {
+                if (dist_matrix[i][jj] < mind)
+                {
+                    mind = dist_matrix[i][jj];
+                    minid = trk.first;
+                    minjj = jj;
+                }
+                jj++;
+            }
+            std::cout << "min dist (" << i << " , " << minjj << "): " << mind << std::endl;
+            std::cout << "track (" << minid << "): " << tracks[minid].GetState() << std::endl;
+        }
+    }
+    std::cout << "--------------------" << std::endl;
     // Find association
     HungarianMatching(dist_matrix, detection.size(), tracks.size(), association);
 
@@ -239,6 +266,14 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
         size_t j = 0;
         for (const auto& trk : tracks) {
             if (0 == association[i][j]) {
+
+                if (detection[i].centroid(0) < 60 && detection[i].centroid(0) > 56 && detection[i].centroid(1) < 52 && detection[i].centroid(1) > 50)
+                {
+                    std::cout << "detection (" << i << "): " << detection[i].centroid << std::endl;
+                    std::cout << "track (" << trk.first <<  "): " << trk.second.GetState() << std::endl;
+                    std::cout << "dist (" << i << " , " << j << " (" << trk.first << ")" << "): " << dist_matrix[i][j] << std::endl;
+                }
+
                 // Filter out matched with high distance
                 if (dist_matrix[i][j] < dist_threshold_sq) {
                     matched[trk.first] = detection[i];
