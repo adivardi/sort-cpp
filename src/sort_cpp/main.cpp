@@ -306,7 +306,8 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
       // However, the total number of false positive will increase more (from experiments),
       // which leads to MOTA decrease
       // Developer can export coasted cycles if false negative tracks is critical in the system
-      if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
+      // if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
+      if (state(0) < 60 && state(0) > 56 && state(1) < 52 && state(1) > 50)
       {
         double vkf = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
         double v = vkf / dt;
