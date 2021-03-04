@@ -1,6 +1,7 @@
 #include "sort_cpp/tracker.h"
 
 #include <Eigen/Dense>
+#include <algorithm>    // std::find
 #include <map>
 
 
@@ -253,6 +254,8 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
     // Find association
     HungarianMatching(dist_matrix, detection.size(), tracks.size(), association);
 
+    std::vector<int> unmatched_det_ind;
+    std::vector<int> matched_tracks_ind;
     for (size_t i = 0; i < detection.size(); i++) {
         bool matched_flag = false;
         size_t j = 0;
@@ -270,6 +273,8 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
                 if (dist_matrix[i][j] < dist_threshold) {
                     matched[trk.first] = detection[i];
                     matched_flag = true;
+
+                    matched_tracks_ind.push_back(trk.first);
                 }
                 // It builds 1 to 1 association, so we can break from here
                 break;
@@ -278,8 +283,117 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
         }
         // if detection cannot match with any tracks
         if (!matched_flag) {
-            unmatched_det.push_back(detection[i]);
+            // unmatched_det.push_back(detection[i]);      // TODO move to later
+            unmatched_det_ind.push_back(i);
         }
+    }
+
+    // get a list of unmatched tracks
+    std::cout << "unmatched tracks: " << std::endl;
+    std::vector<int> unmatched_tracks_ind;
+    for (const auto& trk : tracks)
+    {
+        auto in_matched = std::find(matched_tracks_ind.begin(), matched_tracks_ind.end(), trk.first);
+        if (in_matched == matched_tracks_ind.end())
+        {
+            unmatched_tracks_ind.push_back(trk.first);
+            std::cout << trk.first << ", " << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    std::cout << "unmatched tracks: " << unmatched_tracks_ind.size() << std::endl;
+
+    // TODO remove
+    std::cout << "unmatched detections (" << unmatched_det_ind.size() << "): " << std::endl;
+    for (const auto& det_id : unmatched_det_ind)
+    {
+            std::cout << det_id << ", " << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "matched 1 (" << matched.size() << "): " << std::endl;
+    for (const auto &match : matched)
+    {
+        std::cout << "track id" << match.first << std::endl;
+    }
+
+    std::cout << "+++++++++++++++++++++++++++++++" << std::endl;
+    // run Hungarian again
+    // row - detection, column - tracks
+    std::vector<std::vector<float>> dist_matrix2;
+    dist_matrix2.resize(unmatched_det_ind.size(), std::vector<float>(unmatched_tracks_ind.size()));
+
+    std::vector<std::vector<float>> association2;
+    association2.resize(unmatched_det_ind.size(), std::vector<float>(unmatched_tracks_ind.size()));
+
+    {
+        size_t i = 0;
+        for (const auto& det_id : unmatched_det_ind)    // also can use for (i ...) and det_id = unmatched_det_ind[i]
+        {
+            size_t j = 0;
+            for (const auto& track_id : unmatched_tracks_ind)
+            {
+                dist_matrix2[i][j] = CalculateDistSquared(detection[det_id].centroid, tracks[track_id]);
+                j++;
+            }
+            i++;
+        }
+    }
+
+    HungarianMatching(dist_matrix2, unmatched_det_ind.size(), unmatched_tracks_ind.size(), association2);
+
+    {
+        std::vector<int> unmatched_det_ind2;
+        size_t i = 0;
+        for (const auto& det_id : unmatched_det_ind) {
+            bool matched_flag = false;
+            size_t j = 0;
+            for (const auto& track_id : unmatched_tracks_ind)
+            {
+                // std::cout << "detection (" << det_id << "): " /*<< detection[det_id].centroid */<< std::endl;
+                //         std::cout << "track (" << track_id <<  "): " /*<< tracks[track_id].GetState()*/ << std::endl;
+                //         std::cout << "dist (" << i << " , " << j << " (" << det_id << " , " << track_id << ")" << "): " << dist_matrix2[i][j] << std::endl;
+                if (0 == association2[i][j])
+                {
+                    // if (detection[det_id].centroid(0) < 60 && detection[det_id].centroid(0) > 56 && detection[det_id].centroid(1) < 52 && detection[det_id].centroid(1) > 50)
+                    // {
+                        std::cout << "detection (" << det_id << "): " /*<< detection[det_id].centroid */<< std::endl;
+                        std::cout << "track (" << track_id <<  "): " /*<< tracks[track_id].GetState()*/ << std::endl;
+                        std::cout << "dist (" << i << " , " << j << " (" << det_id << " , " << track_id << ")" << "): " << dist_matrix2[i][j] << std::endl;
+                    // }
+
+                    // Filter out matched with high distance
+                    if (dist_matrix2[i][j] < dist_threshold) {
+                        matched[track_id] = detection[det_id];
+                        matched_flag = true;
+
+                        // matched_tracks_ind.push_back(trk.first);
+                    }
+                    // It builds 1 to 1 association, so we can break from here
+                    break;
+                }
+                j++;
+            }
+            // if detection cannot match with any tracks
+            if (!matched_flag) {
+                unmatched_det.push_back(detection[det_id]);      // TODO move to later
+                unmatched_det_ind2.push_back(det_id);
+            }
+            i++;
+        }
+
+        std::cout << "unmatched detections 2 (" << unmatched_det_ind2.size() << "): " << std::endl;
+        for (const auto& det_id : unmatched_det_ind2)
+        {
+                std::cout << det_id << ", " << std::endl;
+        }
+    std::cout << std::endl;
+    }
+
+    std::cout << "matched 2 (" << matched.size() << "): " << std::endl;
+    for (const auto &match : matched)
+    {
+        std::cout << "track id" << match.first << std::endl;
     }
 }
 
