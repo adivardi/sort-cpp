@@ -3,11 +3,12 @@
 #include <chrono>
 #include <optional>
 #include <map>
-#include <opencv2/core.hpp>
-#include <Eigen/Dense>
 
-#include "track.h"
+#include <Eigen/Dense>
+#include <opencv2/core.hpp>
+
 #include "munkres.h"
+#include "track.h"
 #include "utils.h"
 
 class Tracker {
@@ -51,10 +52,11 @@ public:
                                        std::map<int, Track>& tracks,
                                        std::map<int, Detection>& matched,
                                        std::vector<Detection>& unmatched_det,
-                                       float dist_threshold = 0.3);
+                                       const float dist_threshold_sq,
+                                       const float max_distance_sq);
 
     // void Run(const std::vector<cv::Rect>& detections);
-    std::map<int, Detection> Run(const std::vector<Detection>& detections, float dist_threshold = 0.3);
+    std::map<int, Detection> Run(const std::vector<Detection>& detections, const float dist_threshold_sq, const float max_distance_sq);
 
     std::map<int, Track> GetTracks();
 

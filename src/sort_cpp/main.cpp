@@ -54,6 +54,7 @@ double don_large_scale = 2.0;   // The large scale to use in the DoN filter.
 double don_angle_thresh = 0.1; // The minimum DoN magnitude to threshold by
 
 float tracking_distance_thresh = 1.0;
+float tracking_max_distance = 1.0;
 
 static tf2_ros::Buffer tf_buffer_;
 
@@ -290,7 +291,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   }
 
   /*** Run SORT tracker ***/
-  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, tracking_distance_thresh);
+  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, tracking_distance_thresh * tracking_distance_thresh, tracking_max_distance * tracking_max_distance);
   /*** Tracker update done ***/
 
   const auto tracks = tracker.GetTracks();

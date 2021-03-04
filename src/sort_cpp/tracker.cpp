@@ -3,7 +3,6 @@
 #include <Eigen/Dense>
 #include <map>
 
-
 Tracker::Tracker() : dt_{0.0}
 {
     id_ = 0;
@@ -35,8 +34,7 @@ double Tracker::CalculateDistSquared(const Eigen::VectorXd& det, const Track& tr
     double delta_y = track_state(1) - det(1);
     double delta_z = track_state(2) - det(2);
 
-    double dist_sq = delta_x * delta_x + delta_y * delta_y + delta_z * delta_z;
-    return dist_sq;
+    return (delta_x * delta_x + delta_y * delta_y + delta_z * delta_z);
 }
 
 
@@ -95,7 +93,7 @@ void Tracker::HungarianMatching(const std::vector<std::vector<float>>& dist_matr
                                 size_t nrows, size_t ncols,
                                 std::vector<std::vector<float>>& association) {
     Matrix<float> matrix(nrows, ncols);
-    // Initialize matrix with IOU values
+    // Initialize matrix with dist values
     for (size_t i = 0 ; i < nrows ; i++) {
         for (size_t j = 0 ; j < ncols ; j++) {
             matrix(i, j) = dist_matrix[i][j];   // we want to find minimum distance
@@ -195,7 +193,8 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
                                             std::map<int, Track>& tracks,
                                             std::map<int, Detection>& matched,
                                             std::vector<Detection>& unmatched_det,
-                                            float dist_threshold)
+                                            const float dist_threshold_sq,
+                                            const float max_distance_sq)
 {
     // Set all detection as unmatched if no tracks existing
     if (tracks.empty()) {
@@ -219,7 +218,12 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
     for (size_t i = 0; i < detection.size(); i++) {
         size_t j = 0;
         for (const auto& trk : tracks) {
-            dist_matrix[i][j] = CalculateDistSquared(detection[i].centroid, trk.second);
+            double dist_sq = CalculateDistSquared(detection[i].centroid, trk.second);
+            if (dist_sq > max_distance_sq)
+            {
+                dist_sq = max_distance_sq;
+            }
+            dist_matrix[i][j] = dist_sq;
             j++;
         }
     }
@@ -233,7 +237,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
         for (const auto& trk : tracks) {
             if (0 == association[i][j]) {
                 // Filter out matched with high distance
-                if (dist_matrix[i][j] < dist_threshold) {
+                if (dist_matrix[i][j] < dist_threshold_sq) {
                     matched[trk.first] = detection[i];
                     matched_flag = true;
                 }
@@ -251,7 +255,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
 
 
 // void Tracker::Run(const std::vector<cv::Rect>& detections) {
-std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& detections, float dist_threshold) {
+std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& detections, const float dist_threshold_sq, const float max_distance_sq) {
 
     auto new_update_time = std::chrono::high_resolution_clock::now();
     if (prev_update_time_)
@@ -275,7 +279,7 @@ std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& det
 
     // return values - matched, unmatched_det
     if (!detections.empty()) {
-        AssociateDetectionsToTrackers(detections, tracks_, matched, unmatched_det, dist_threshold);
+        AssociateDetectionsToTrackers(detections, tracks_, matched, unmatched_det, dist_threshold_sq, max_distance_sq);
     }
 
     std::map<int, Detection> track_to_detection_associations;
