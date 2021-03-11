@@ -251,16 +251,20 @@ void
 cloud_cb(const PointCloud::ConstPtr& input_cloud)
 {
   std::cout << "------------------------------" << std::endl;
+  auto start_time = std::chrono::high_resolution_clock::now();
   PointCloud::Ptr processed_cloud(new PointCloud);
   processPointCloud(input_cloud, processed_cloud);
 
   // publish processed pointcloud
   proccessed_pub_.publish(processed_cloud);
 
+  auto t2 = std::chrono::high_resolution_clock::now();
+
   std::vector<pcl::PointIndices> clusters_indices;
   clusterPointcloud(processed_cloud, clusters_indices);
 
   std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
+  auto t3 = std::chrono::high_resolution_clock::now();
 
   // get cluster centroid
   std::map<int, PointCloud::Ptr> clusters;
@@ -292,12 +296,16 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
     i++;
   }
 
+  auto t4 = std::chrono::high_resolution_clock::now();
+
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
     tracker.Run(clusters_centroids, input_cloud->header.stamp,
     tracking_distance_thresh_per_sec * tracking_distance_thresh_per_sec,
     tracking_max_distance_per_sec * tracking_max_distance_per_sec);
   /*** Tracker update done ***/
+
+  auto t5 = std::chrono::high_resolution_clock::now();
 
   const auto tracks = tracker.GetTracks();
   const double dt = tracker.GetDT();
@@ -331,10 +339,14 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
     }
   }
 
+  auto t6 = std::chrono::high_resolution_clock::now();
+
   if (marker_pub_.getNumSubscribers() > 0)
   {
     publishTrackAsMarker(processed_cloud->header.frame_id, tracks, dt);
   }
+
+  auto t7 = std::chrono::high_resolution_clock::now();
 
   if (VIS_CLUSTERS_BY_TRACKS)
   {
@@ -368,6 +380,19 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
       clusters_pubs_[i].publish(clusters[i]);
     }
   }
+
+  auto t8 = std::chrono::high_resolution_clock::now();
+
+  std::cout << "process      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - start_time).count() << " ms" << std::endl;
+  std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count() << " ms" << std::endl;
+  std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count() << " ms" << std::endl;
+  std::cout << "track        : " << std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count() << " ms" << std::endl;
+  std::cout << "print tracks : " << std::chrono::duration_cast<std::chrono::milliseconds>(t6 - t5).count() << " ms" << std::endl;
+  std::cout << "pub tracks   : " << std::chrono::duration_cast<std::chrono::milliseconds>(t7 - t6).count() << " ms" << std::endl;
+  std::cout << "pub clusters : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - t7).count() << " ms" << std::endl;
+  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - start_time).count() << " ms" << std::endl;
+  std::cout << "input size   : " << input_cloud->points.size() << std::endl;
+  std::cout << "process size : " << processed_cloud->points.size() << std::endl;
 }
 
 int
