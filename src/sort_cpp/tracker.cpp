@@ -3,7 +3,7 @@
 #include <Eigen/Dense>
 #include <map>
 
-Tracker::Tracker() : dt_{0}
+Tracker::Tracker() : dt_{0.0}
 {
     id_ = 0;
 }
@@ -193,9 +193,15 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
                                             std::map<int, Track>& tracks,
                                             std::map<int, Detection>& matched,
                                             std::vector<Detection>& unmatched_det,
-                                            const float dist_threshold_sq,
-                                            const float max_distance_sq)
+                                            const float dist_threshold_sq_per_sec,
+                                            const float max_distance_sq_per_sec)
 {
+    // TODO this maybe issue in the beginning when dt=0. should probably skip the 1st iteration completely
+    const float dist_threshold_sq = dist_threshold_sq_per_sec * dt_ * dt_;
+    const float max_distance_sq = max_distance_sq_per_sec * dt_ * dt_;
+    std::cout << "dist_threshold_sq: " << dist_threshold_sq << std::endl;
+    std::cout << "max_distance_sq: " << max_distance_sq << std::endl;
+
     // Set all detection as unmatched if no tracks existing
     if (tracks.empty()) {
         for (const auto& det : detection) {
@@ -260,7 +266,8 @@ std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& det
 {
     if (prev_update_time_)
     {
-        dt_ = timestamp - prev_update_time_.value();
+        const auto microsec = timestamp - prev_update_time_.value();
+        dt_ = static_cast<double>(microsec) * 1e-6;
     }
 
     prev_update_time_ = std::make_optional(timestamp);
@@ -318,7 +325,7 @@ std::map<int, Track> Tracker::GetTracks() {
     return tracks_;
 }
 
-uint64_t Tracker::GetDT()
+double Tracker::GetDT()
 {
     return dt_;
 }

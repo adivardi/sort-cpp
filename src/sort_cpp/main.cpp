@@ -54,11 +54,12 @@ double don_small_scale = 0.5;   // The small scale to use in the DoN filter.
 double don_large_scale = 2.0;   // The large scale to use in the DoN filter.
 double don_angle_thresh = 0.1; // The minimum DoN magnitude to threshold by
 
-float tracking_distance_thresh = 1.0;
-float tracking_max_distance = 1.0;
+float tracking_distance_thresh_per_sec = 10.0;
+float tracking_max_distance_per_sec = 11.1;  // must not be smaller than tracking_distance_thresh, otherwise tracker will
+                                    // accept association with max distance (=> no distance threshold applied)
+                                    // in order to avoid floating point error on equal, should set to a bit bigger
 
 static tf2_ros::Buffer tf_buffer_;
-
 // create SORT tracker
 Tracker tracker;
 
@@ -292,11 +293,14 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   }
 
   /*** Run SORT tracker ***/
-  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, input_cloud->header.stamp, tracking_distance_thresh * tracking_distance_thresh, tracking_max_distance * tracking_max_distance);
+  std::map<int, Tracker::Detection> track_to_detection_associations =
+    tracker.Run(clusters_centroids, input_cloud->header.stamp,
+    tracking_distance_thresh_per_sec * tracking_distance_thresh_per_sec,
+    tracking_max_distance_per_sec * tracking_max_distance_per_sec);
   /*** Tracker update done ***/
 
   const auto tracks = tracker.GetTracks();
-  const double dt = static_cast<double>(tracker.GetDT()) * 1e-6;
+  const double dt = tracker.GetDT();
 
   std::cout << "dt: " << dt << std::endl;
 

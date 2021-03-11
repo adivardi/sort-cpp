@@ -48,12 +48,12 @@ public:
     //                                    std::vector<cv::Rect>& unmatched_det,
                                     //    float iou_threshold = 0.3);
 
-    static void AssociateDetectionsToTrackers(const std::vector<Detection>& detection,
+    void AssociateDetectionsToTrackers(const std::vector<Detection>& detection,
                                        std::map<int, Track>& tracks,
                                        std::map<int, Detection>& matched,
                                        std::vector<Detection>& unmatched_det,
-                                       const float dist_threshold_sq,
-                                       const float max_distance_sq);
+                                       const float dist_threshold_sq_per_sec,
+                                       const float max_distance_sq_per_sec);
 
     // void Run(const std::vector<cv::Rect>& detections);
     std::map<int, Detection> Run(const std::vector<Detection>& detections, uint64_t timestamp,
@@ -61,7 +61,7 @@ public:
 
     std::map<int, Track> GetTracks();
 
-    uint64_t GetDT();
+    double GetDT();
 
 private:
     // Hash-map between ID and corresponding tracker
@@ -71,5 +71,5 @@ private:
     int id_;
 
     std::optional<uint64_t> prev_update_time_;
-    uint64_t dt_; // in microseconds
+    double dt_; // in microseconds
 };
