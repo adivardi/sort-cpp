@@ -140,6 +140,11 @@ Eigen::VectorXd Track::GetState() const
     return kf_.x_;
 }
 
+Eigen::MatrixXd Track::GetCovariance() const
+{
+    return kf_.P_;
+}
+
 float Track::GetNIS() const {
     return kf_.NIS_;
 }

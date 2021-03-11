@@ -47,6 +47,7 @@ float z_max = 2.5;
 float clustering_tolerance = 2.5;
 float min_pts_in_cluster = 5;
 float clustering_dist_2d_thresh = 0.7;
+float clustering_dist_2d_thresh_sq = clustering_dist_2d_thresh * clustering_dist_2d_thresh;
 
 bool don_filter = false;
 double don_small_scale = 0.5;   // The small scale to use in the DoN filter.
@@ -194,7 +195,7 @@ clusterCondition(const PointXYZI& a, const PointXYZI& b, float  /*dist*/)
   // NOTE very similar results between 2D and 3D
 
   float dist_2d_sq = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
-  return (dist_2d_sq < (clustering_dist_2d_thresh * clustering_dist_2d_thresh));
+  return (dist_2d_sq < (clustering_dist_2d_thresh_sq));
 
   // float dist_3d_sq = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z);
   // return (dist_3d_sq < (1.6 * 1.6));
@@ -438,13 +439,13 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
       heading.pose.position.y = state(1);
       heading.pose.position.z = state(2);
 
-      tf::Vector3 speed_direction (state(3), state(4), state(5));
+      tf::Vector3 velocity_vector (state(3), state(4), state(5));
       tf::Vector3 origin (1, 0, 0);
 
       // q.w = sqrt((origin.length() ^ 2) * (v2.Length ^ 2)) + dotproduct(v1, v2);
-      auto w = (origin.length() * speed_direction.length()) + tf::tfDot(origin, speed_direction);
+      auto w = (origin.length() * velocity_vector.length()) + tf::tfDot(origin, velocity_vector);
 
-      tf::Vector3 a = origin.cross(speed_direction);
+      tf::Vector3 a = origin.cross(velocity_vector);
 
       tf::Quaternion q(a.x(), a.y(), a.z(), w);
       q.normalize();

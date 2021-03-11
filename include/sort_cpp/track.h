@@ -18,7 +18,9 @@ public:
 
     void Init(const Eigen::VectorXd observation);
     void Update(const Eigen::VectorXd observation);
+
     Eigen::VectorXd GetState() const;
+    Eigen::MatrixXd GetCovariance() const;
 
     float GetNIS() const;
 
