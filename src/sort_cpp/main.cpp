@@ -291,11 +291,13 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   }
 
   /*** Run SORT tracker ***/
-  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, tracking_distance_thresh * tracking_distance_thresh, tracking_max_distance * tracking_max_distance);
+  std::map<int, Tracker::Detection> track_to_detection_associations = tracker.Run(clusters_centroids, input_cloud->header.stamp, tracking_distance_thresh * tracking_distance_thresh, tracking_max_distance * tracking_max_distance);
   /*** Tracker update done ***/
 
   const auto tracks = tracker.GetTracks();
-  const double dt = tracker.GetDT();
+  const double dt = static_cast<double>(tracker.GetDT()) * 1e-6;
+
+  std::cout << "dt: " << dt << std::endl;
 
   if (PRINT_TRACKS)
   {

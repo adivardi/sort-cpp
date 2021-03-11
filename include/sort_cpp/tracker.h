@@ -56,11 +56,12 @@ public:
                                        const float max_distance_sq);
 
     // void Run(const std::vector<cv::Rect>& detections);
-    std::map<int, Detection> Run(const std::vector<Detection>& detections, const float dist_threshold_sq, const float max_distance_sq);
+    std::map<int, Detection> Run(const std::vector<Detection>& detections, uint64_t timestamp,
+                                 const float dist_threshold_sq, const float max_distance_sq);
 
     std::map<int, Track> GetTracks();
 
-    double GetDT();
+    uint64_t GetDT();
 
 private:
     // Hash-map between ID and corresponding tracker
@@ -69,6 +70,6 @@ private:
     // Assigned ID for each bounding box
     int id_;
 
-    std::optional<std::chrono::high_resolution_clock::time_point> prev_update_time_;
-    double dt_;
+    std::optional<uint64_t> prev_update_time_;
+    uint64_t dt_; // in microseconds
 };
