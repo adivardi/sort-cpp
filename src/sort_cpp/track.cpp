@@ -7,7 +7,7 @@ constexpr unsigned int num_obs = 3;       // observation - center_x, center_y, c
 Track::Track() : kf_(num_states, num_obs) {
 
     /*** Define constant velocity model ***/
-    // x_k+1 = x_k + v_k
+    // x_k+1 = x_k + v_k * dt
     // v_k+1 = v_k
     // no input (drop BkUk from prediction state estimate)
 
@@ -22,14 +22,16 @@ Track::Track() : kf_(num_states, num_obs) {
     //         0, 0, 0, 0, 0, 0, 1, 0,
     //         0, 0, 0, 0, 0, 0, 0, 1;
 
-    // state - state - center_x, center_y, center_z, v_cx, v_cy, v_cz
-    kf_.F_ <<
-            1, 0, 0, 1, 0, 0,
-            0, 1, 0, 0, 1, 0,
-            0, 0, 1, 0, 0, 1,
-            0, 0, 0, 1, 0, 0,
-            0, 0, 0, 0, 1, 0,
-            0, 0, 0, 0, 0, 1;
+    // state - center_x, center_y, center_z, v_cx, v_cy, v_cz
+    F_ = Eigen::MatrixXd::Zero(num_states, num_states);
+    F_ <<
+       1, 0, 0, 1, 0, 0,
+       0, 1, 0, 0, 1, 0,
+       0, 0, 1, 0, 0, 1,
+       0, 0, 0, 1, 0, 0,
+       0, 0, 0, 0, 1, 0,
+       0, 0, 0, 0, 0, 1;
+    kf_.F_ = F_;
 
     // Error covariance matrix P
     // Give high uncertainty to the unobservable initial velocities
@@ -73,6 +75,15 @@ Track::Track() : kf_(num_states, num_obs) {
             0, 0, 1;
 }
 
+void Track::setDtInModel(double dt)
+{
+    Eigen::MatrixXd F = F_;
+    F(0, 3) *= dt;
+    F(1, 4) *= dt;
+    F(2, 5) *= dt;
+
+    kf_.F_ = F;
+}
 
 // Get predicted locations from existing trackers
 // dt is time elapsed between the current and previous measurements

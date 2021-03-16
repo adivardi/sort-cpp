@@ -67,7 +67,7 @@ std::vector<ros::Publisher> clusters_pubs_;
 ros::Publisher proccessed_pub_;
 ros::Publisher marker_pub_;
 
-void publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks, double dt);
+void publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks);
 
 void
 filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
@@ -308,9 +308,8 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   auto t5 = std::chrono::high_resolution_clock::now();
 
   const auto tracks = tracker.GetTracks();
-  const double dt = tracker.GetDT();
 
-  std::cout << "dt: " << dt << std::endl;
+  std::cout << "dt: " << tracker.GetDT() << std::endl;
 
   if (PRINT_TRACKS)
   {
@@ -324,14 +323,12 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
       // Developer can export coasted cycles if false negative tracks is critical in the system
       if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
       {
-        double vkf = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
-        double v = vkf / dt;
+        double v = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
         // Print to terminal for debugging
         std::cout << "track id: " << trk.first
                   << ", cluster id: " << track_to_detection_associations[trk.first].cluster_id
                   << ", state: " << state(0) << ", " << state(1) << ", " << state(2)
                   << ", v: " << v
-                  << ", vkf: " << vkf
                   << " (" << state(3) << ", " << state(4) << ", " << state(5) << ")"
                   << " Hit Streak = " << trk.second.hit_streak_
                   << " Coast Cycles = " << trk.second.coast_cycles_ << std::endl;
@@ -343,7 +340,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
   if (marker_pub_.getNumSubscribers() > 0)
   {
-    publishTrackAsMarker(processed_cloud->header.frame_id, tracks, dt);
+    publishTrackAsMarker(processed_cloud->header.frame_id, tracks);
   }
 
   auto t7 = std::chrono::high_resolution_clock::now();
@@ -439,7 +436,7 @@ main(int argc, char** argv)
 
 
 void
-publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks, double dt)
+publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks)
 {
   visualization_msgs::MarkerArray array;
   std_msgs::Header header;
@@ -484,8 +481,7 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
       heading.pose.orientation.y = q.y();
       heading.pose.orientation.z = q.z();
 
-      const double vkf = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
-      const double v = vkf / dt;
+      const double v = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
 
       constexpr double k_arrow_shaft_diameter = 0.15;
       heading.scale.x = v;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <eigen3/Eigen/Dense>
 #include <opencv2/core.hpp>
 #include "kalman_filter.h"
 
@@ -10,6 +11,8 @@ public:
 
     // Destructor
     ~Track() = default;
+
+    void setDtInModel(double dt);
 
     // void Init(const cv::Rect& bbox);
     void Predict();
@@ -31,4 +34,6 @@ private:
     cv::Rect ConvertStateToBbox(const Eigen::VectorXd &state) const;
 
     KalmanFilter kf_;
+
+    Eigen::MatrixXd F_;
 };

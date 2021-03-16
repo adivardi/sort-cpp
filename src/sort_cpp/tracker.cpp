@@ -274,6 +274,7 @@ std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& det
 
     /*** Predict internal tracks from previous frame ***/
     for (auto &track : tracks_) {
+        track.second.setDtInModel(dt_);
         track.second.Predict();
     }
 
