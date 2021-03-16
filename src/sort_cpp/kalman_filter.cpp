@@ -64,10 +64,7 @@ void KalmanFilter::Update(const Eigen::VectorXd& z) {
 
     NIS_ = y.transpose() * S.inverse() * y;
 
-//    std::cout << std::endl;
-//    std::cout << "P_predict = " << std::endl;
-//    std::cout << P_predict_ << std::endl;
-//
+//    std::cout << "P_predict = " << P_predict_.diagonal().transpose() << std::endl;
 //
 //    std::cout << "Z = " << std::endl;
 //    std::cout << z << std::endl;

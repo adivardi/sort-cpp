@@ -250,7 +250,7 @@ clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& 
 void
 cloud_cb(const PointCloud::ConstPtr& input_cloud)
 {
-  std::cout << "------------------------------" << std::endl;
+  std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
   auto start_time = std::chrono::high_resolution_clock::now();
   PointCloud::Ptr processed_cloud(new PointCloud);
   processPointCloud(input_cloud, processed_cloud);
@@ -331,7 +331,9 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
                   << ", v: " << v
                   << " (" << state(3) << ", " << state(4) << ", " << state(5) << ")"
                   << " Hit Streak = " << trk.second.hit_streak_
-                  << " Coast Cycles = " << trk.second.coast_cycles_ << std::endl;
+                  << " Coast Cycles = " << trk.second.coast_cycles_
+                  // << " covariance = " << covar.transpose()
+                  << std::endl;
       }
     }
   }
