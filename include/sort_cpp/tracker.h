@@ -52,8 +52,8 @@ public:
                                        std::map<int, Track>& tracks,
                                        std::map<int, Detection>& matched,
                                        std::vector<Detection>& unmatched_det,
-                                       const float dist_threshold_sq_per_sec,
-                                       const float max_distance_sq_per_sec);
+                                       const float dist_threshold_sq,
+                                       const float max_distance_sq);
 
     // void Run(const std::vector<cv::Rect>& detections);
     std::map<int, Detection> Run(const std::vector<Detection>& detections, uint64_t timestamp,
