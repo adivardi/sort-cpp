@@ -234,7 +234,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
     // find actual best association for pedestrian TODO remove
     for (size_t i = 0; i < detection.size(); i++)
     {
-        if (detection[i].centroid(0) < 60 && detection[i].centroid(0) > 56 && detection[i].centroid(1) < 52 && detection[i].centroid(1) > 50)
+        if (detection[i].centroid(0) < -50 && detection[i].centroid(0) > -75 && detection[i].centroid(1) < 10 && detection[i].centroid(1) > -2)
         {
             std::cout << "detection: " << detection[i].centroid << std::endl;
             // std::cout << "dist row: " << dist_matrix[i] << std::endl;
@@ -267,7 +267,7 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
         for (const auto& trk : tracks) {
             if (0 == association[i][j]) {
 
-                if (detection[i].centroid(0) < 60 && detection[i].centroid(0) > 56 && detection[i].centroid(1) < 52 && detection[i].centroid(1) > 50)
+                if (detection[i].centroid(0) < -50 && detection[i].centroid(0) > -75 && detection[i].centroid(1) < 10 && detection[i].centroid(1) > -2)
                 {
                     std::cout << "detection (" << i << "): " << detection[i].centroid << std::endl;
                     std::cout << "track (" << trk.first <<  "): " << trk.second.GetState() << std::endl;

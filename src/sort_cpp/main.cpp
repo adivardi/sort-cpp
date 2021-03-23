@@ -322,7 +322,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
       // which leads to MOTA decrease
       // Developer can export coasted cycles if false negative tracks is critical in the system
       // if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
-      if (state(0) < 60 && state(0) > 56 && state(1) < 52 && state(1) > 50)
+      if (state(0) < -50 && state(0) > -85 && state(1) < 15 && state(1) > -2)
       {
         double v = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
         // Print to terminal for debugging
