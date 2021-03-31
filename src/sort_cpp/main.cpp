@@ -8,6 +8,9 @@
 #include <random>
 #include <chrono>
 
+#include <grid_map_core/GridMap.hpp>
+#include <grid_map_ros/GridMapRosConverter.hpp>
+
 // #include <pcl/filters/extract_indices.h>
 #include <pcl/features/don.h>
 #include <pcl/features/normal_3d_omp.h>
@@ -21,6 +24,7 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <nav_msgs/OccupancyGrid.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/impl/transforms.hpp>
 #include <pcl_ros/transforms.h>
@@ -34,10 +38,13 @@
 
 #include <enway_msgs/ObstacleArray.h>
 
+bool USE_MAP = true;
+std::string map_topic = "/navigation/enway_map/far_map_drivable_region_obstacles";
+
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
-typedef pcl::PointXYZI PointXYZI;
+typedef pcl::PointXYZ PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
@@ -253,16 +260,8 @@ clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& 
 }
 
 void
-cloud_cb(const PointCloud::ConstPtr& input_cloud)
+cluster_and_track(const PointCloud::Ptr& processed_cloud)
 {
-  std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
-  auto start_time = std::chrono::high_resolution_clock::now();
-  PointCloud::Ptr processed_cloud(new PointCloud);
-  processPointCloud(input_cloud, processed_cloud);
-
-  // publish processed pointcloud
-  proccessed_pub_.publish(processed_cloud);
-
   auto t2 = std::chrono::high_resolution_clock::now();
 
   std::vector<pcl::PointIndices> clusters_indices;
@@ -305,7 +304,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
-    tracker.Run(clusters_centroids, input_cloud->header.stamp,
+    tracker.Run(clusters_centroids, processed_cloud->header.stamp,
     tracking_distance_thresh * tracking_distance_thresh,
     tracking_max_distance * tracking_max_distance);
   /*** Tracker update done ***/
@@ -396,7 +395,6 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
   auto t9 = std::chrono::high_resolution_clock::now();
 
-  std::cout << "process      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - start_time).count() << " ms" << std::endl;
   std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count() << " ms" << std::endl;
   std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count() << " ms" << std::endl;
   std::cout << "track        : " << std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count() << " ms" << std::endl;
@@ -404,9 +402,66 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   std::cout << "pub tracks   : " << std::chrono::duration_cast<std::chrono::milliseconds>(t7 - t6).count() << " ms" << std::endl;
   std::cout << "pub clusters : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - t7).count() << " ms" << std::endl;
   std::cout << "pub obstacles: " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - t8).count() << " ms" << std::endl;
-  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - start_time).count() << " ms" << std::endl;
+  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - t2).count() << " ms" << std::endl;
+  std::cout << "cloud size : " << processed_cloud->points.size() << std::endl;
+}
+
+void
+cloud_cb(const PointCloud::ConstPtr& input_cloud)
+{
+  std::cout << "++++++++++++++++++ cloud_cb +++++++++++++++++++++" << std::endl;
+  auto t1 = std::chrono::high_resolution_clock::now();
+  PointCloud::Ptr processed_cloud(new PointCloud);
+  processPointCloud(input_cloud, processed_cloud);
+
+  // publish processed pointcloud
+  proccessed_pub_.publish(processed_cloud);
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "process      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
   std::cout << "input size   : " << input_cloud->points.size() << std::endl;
-  std::cout << "process size : " << processed_cloud->points.size() << std::endl;
+
+  cluster_and_track(processed_cloud);
+}
+
+void
+map_callback(const nav_msgs::OccupancyGrid& input_map)
+{
+  std::cout << "++++++++++++++++++ map_callback +++++++++++++++++++++" << std::endl;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  // convert msg to GridMap
+  grid_map::GridMap grid_map;
+  bool success = grid_map::GridMapRosConverter::fromOccupancyGrid(input_map, "obstacles", grid_map);
+  if (!success)
+  {
+    ROS_ERROR("Failed to convert OccupancyGrid msg to GridMap");
+    return;
+  }
+
+  // convert GridMap to pointcloud
+  // TODO as protoype use GridMap -> sensor_msgs::PointCloud2Ptr -> pcl::PointCloud since no out of the box alternative is available
+  // later should probably so it in a single copy
+  sensor_msgs::PointCloud2Ptr ros_cloud = boost::make_shared<sensor_msgs::PointCloud2>();
+  grid_map::GridMapRosConverter::toPointCloud(grid_map, std::vector<std::string>({"obstacles"}), "obstacles", *ros_cloud);
+  PointCloud::Ptr input_cloud(new PointCloud);
+  pcl::fromROSMsg(*ros_cloud, *input_cloud);
+
+  for (auto& p : input_cloud->points)
+  {
+    p.z = 0.0;
+  }
+
+  // publish processed pointcloud
+  proccessed_pub_.publish(input_cloud);
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  std::cout << "map->pcl     : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
+
+  std::cout << "pts: " << input_cloud->points.size() << std::endl;
+  std::cout << "map input frame: " << input_cloud->header.frame_id << std::endl;
+
+  cluster_and_track(input_cloud);
 }
 
 int
@@ -434,8 +489,15 @@ main(int argc, char** argv)
   }
   std::cout << "got 1st transform!" << std::endl;
 
-  // Create a ROS subscriber for the input point cloud
-  ros::Subscriber pointcloud_sub = nh.subscribe("pointcloud", 1, cloud_cb);
+  ros::Subscriber input_sub;
+  if(!USE_MAP)
+  {
+      input_sub = nh.subscribe("pointcloud", 1, cloud_cb);
+  }
+  else
+  {
+    input_sub = nh.subscribe(map_topic, 1, map_callback);
+  }
 
   for (int i = 0; i < 10; i++)
   {

@@ -8,6 +8,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 set(PROJECT_CATKIN_DEPS
     roscpp
+    grid_map_core
+    grid_map_ros
     pcl_conversions
     pcl_ros
     tf
