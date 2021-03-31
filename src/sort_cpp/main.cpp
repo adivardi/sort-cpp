@@ -32,6 +32,8 @@
 #include "sort_cpp/tracker.h"
 #include "sort_cpp/utils.h"
 
+#include <enway_msgs/ObstacleArray.h>
+
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
@@ -66,8 +68,11 @@ Tracker tracker;
 std::vector<ros::Publisher> clusters_pubs_;
 ros::Publisher proccessed_pub_;
 ros::Publisher marker_pub_;
+ros::Publisher obstacles_pub_;
 
-void publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks);
+void publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks);
+
+void publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tracks);
 
 void
 filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
@@ -340,9 +345,11 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
   auto t6 = std::chrono::high_resolution_clock::now();
 
+  std_msgs::Header input_header = fromPCL(processed_cloud->header);
+
   if (marker_pub_.getNumSubscribers() > 0)
   {
-    publishTrackAsMarker(processed_cloud->header.frame_id, tracks);
+    publishTrackAsMarker(input_header, tracks);
   }
 
   auto t7 = std::chrono::high_resolution_clock::now();
@@ -382,6 +389,13 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 
   auto t8 = std::chrono::high_resolution_clock::now();
 
+  if (obstacles_pub_.getNumSubscribers() > 0)
+  {
+    publishObstacles(input_header, tracks);
+  }
+
+  auto t9 = std::chrono::high_resolution_clock::now();
+
   std::cout << "process      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - start_time).count() << " ms" << std::endl;
   std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count() << " ms" << std::endl;
   std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count() << " ms" << std::endl;
@@ -389,7 +403,8 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   std::cout << "print tracks : " << std::chrono::duration_cast<std::chrono::milliseconds>(t6 - t5).count() << " ms" << std::endl;
   std::cout << "pub tracks   : " << std::chrono::duration_cast<std::chrono::milliseconds>(t7 - t6).count() << " ms" << std::endl;
   std::cout << "pub clusters : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - t7).count() << " ms" << std::endl;
-  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - start_time).count() << " ms" << std::endl;
+  std::cout << "pub obstacles: " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - t8).count() << " ms" << std::endl;
+  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - start_time).count() << " ms" << std::endl;
   std::cout << "input size   : " << input_cloud->points.size() << std::endl;
   std::cout << "process size : " << processed_cloud->points.size() << std::endl;
 }
@@ -433,17 +448,76 @@ main(int argc, char** argv)
 
   proccessed_pub_ = nh.advertise<PointCloud>("processed_pointcloud", 1);
 
+  obstacles_pub_ = nh.advertise<enway_msgs::ObstacleArray>("obstacles", 1);
+
   ros::spin();
 }
 
+void
+publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tracks)
+{
+  auto obstacles = boost::make_shared<enway_msgs::ObstacleArray>();
+
+  for (const auto& track : tracks)
+  {
+    if (track.second.coast_cycles_ < kMaxCoastCycles && track.second.hit_streak_ >= kMinHits)
+    {
+      const auto state = track.second.GetState();
+
+      enway_msgs::Obstacle obstacle;
+      obstacle.header = header;
+      obstacle.type = enway_msgs::Obstacle::OTHER;
+
+      obstacle.pose.position.x = state(0);
+      obstacle.pose.position.y = state(1);
+      obstacle.pose.position.z = state(2);
+
+      // get orientation from velocity direction
+      tf::Vector3 velocity_vector (state(3), state(4), state(5));
+      tf::Vector3 origin (1, 0, 0);
+
+      // q.w = sqrt((origin.length() ^ 2) * (v2.Length ^ 2)) + dotproduct(v1, v2);
+      auto w = (origin.length() * velocity_vector.length()) + tf::tfDot(origin, velocity_vector);
+      tf::Vector3 a = origin.cross(velocity_vector);
+      tf::Quaternion q(a.x(), a.y(), a.z(), w);
+      q.normalize();
+
+      if (!std::isfinite(q.x()) || !std::isfinite(q.y()) || !std::isfinite(q.z()) || !std::isfinite(q.w()))
+      {
+        q.setX(0);
+        q.setY(0);
+        q.setZ(0);
+        q.setW(1);
+      }
+      // TODO add covariance to pose so can add the KF covariance ?
+
+      obstacle.pose.orientation.w = q.w();
+      obstacle.pose.orientation.x = q.x();
+      obstacle.pose.orientation.y = q.y();
+      obstacle.pose.orientation.z = q.z();
+
+      obstacle.velocities.twist.linear.x = state(3);
+      obstacle.velocities.twist.linear.y = state(4);
+      obstacle.velocities.twist.linear.z = state(5);
+      obstacle.velocities.twist.angular.x = 0;
+      obstacle.velocities.twist.angular.y = 0;
+      obstacle.velocities.twist.angular.z = 0;
+
+      obstacle.size.x = 0;
+      obstacle.size.y = 0;
+      obstacle.size.z = 0;
+
+      obstacles->obstacles.push_back(obstacle);
+    }
+  }
+
+  obstacles_pub_.publish(obstacles);
+}
 
 void
-publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tracks)
+publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks)
 {
   visualization_msgs::MarkerArray array;
-  std_msgs::Header header;
-  header.frame_id = frame_id;
-  header.stamp = ros::Time::now();
 
   for (const auto& track : tracks)
   {
@@ -467,14 +541,13 @@ publishTrackAsMarker(const std::string& frame_id, const std::map<int, Track> tra
       heading.pose.position.y = state(1);
       heading.pose.position.z = state(2);
 
+      // convert rpy to quaternion
       tf::Vector3 velocity_vector (state(3), state(4), state(5));
       tf::Vector3 origin (1, 0, 0);
 
       // q.w = sqrt((origin.length() ^ 2) * (v2.Length ^ 2)) + dotproduct(v1, v2);
       auto w = (origin.length() * velocity_vector.length()) + tf::tfDot(origin, velocity_vector);
-
       tf::Vector3 a = origin.cross(velocity_vector);
-
       tf::Quaternion q(a.x(), a.y(), a.z(), w);
       q.normalize();
 

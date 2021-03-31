@@ -12,6 +12,7 @@ set(PROJECT_CATKIN_DEPS
     pcl_ros
     tf
     visualization_msgs
+    enway_msgs
 )
 
 find_package(catkin REQUIRED
