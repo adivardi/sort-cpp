@@ -81,6 +81,28 @@ void publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Tr
 
 void publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tracks);
 
+bool
+transformPointcloud(PointCloud& cloud, std::string frame)
+{
+  // transform_pointcloud to processing frame
+  tf2_ros::TransformListener tf_listener_(tf_buffer_);
+  try
+  {
+    constexpr double transform_wait_time {0.2};
+    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
+        frame, cloud.header.frame_id, fromPCL(cloud.header).stamp, ros::Duration{transform_wait_time});
+
+    pcl_ros::transformPointCloud<PointXYZI>(cloud, cloud, transform.transform);
+    cloud.header.frame_id = frame;
+  }
+  catch (tf2::TransformException& ex)
+  {
+    ROS_ERROR_STREAM(ex.what());
+    return false;
+  }
+  return true;
+}
+
 void
 filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
@@ -176,22 +198,12 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   vox_filter.filter(*processed);
 
   // transform_pointcloud to processing frame
-  tf2_ros::TransformListener tf_listener_(tf_buffer_);
-  try
+  if (!transformPointcloud(*processed, processing_frame))
   {
-    constexpr double transform_wait_time {0.2};
-    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
-        processing_frame, processed->header.frame_id, fromPCL(processed->header).stamp, ros::Duration{transform_wait_time});
-
-    pcl_ros::transformPointCloud<PointXYZI>(*processed, *processed, transform.transform);
-    processed->header.frame_id = processing_frame;
-    std::cout << "process frame_id: " << processed->header.frame_id << std::endl;
-  }
-  catch (tf2::TransformException& ex)
-  {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_ERROR_STREAM("Failed to transform to " << processing_frame);
     return;
   }
+  std::cout << "processing frame_id: " << processed->header.frame_id << std::endl;
 
   // remove ground
   filterGround(processed, processed);
@@ -221,22 +233,12 @@ clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& 
   clusters_indices.clear();
 
   // transform to tracking frame
-  tf2_ros::TransformListener tf_listener_(tf_buffer_);
-  try
+  if (!transformPointcloud(*input, tracking_frame))
   {
-    constexpr double transform_wait_time {0.2};
-    geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform(
-        tracking_frame, input->header.frame_id, fromPCL(input->header).stamp, ros::Duration{transform_wait_time});
-
-    pcl_ros::transformPointCloud<PointXYZI>(*input, *input, transform.transform);
-    input->header.frame_id = tracking_frame;
-    std::cout << "tracking frame_id: " << input->header.frame_id << std::endl;
-  }
-  catch (tf2::TransformException& ex)
-  {
-    ROS_ERROR_STREAM(ex.what());
+    ROS_ERROR_STREAM("Failed to transform to " << tracking_frame);
     return;
   }
+  std::cout << "tracking frame_id: " << input->header.frame_id << std::endl;
 
   // Creating the KdTree from input point cloud
   pcl::search::KdTree<PointXYZI>::Ptr tree(new pcl::search::KdTree<PointXYZI>);
