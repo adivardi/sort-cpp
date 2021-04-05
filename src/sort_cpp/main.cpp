@@ -38,8 +38,9 @@
 
 #include <enway_msgs/ObstacleArray.h>
 
-bool USE_MAP = true;
-std::string map_topic = "/navigation/enway_map/far_map_drivable_region_obstacles";
+bool k_filter_drivable = true;
+std::string drivable_map_topic = "/navigation/enway_map/map_drivable_region";
+std::unique_ptr<grid_map::GridMap> drivable_region_;
 
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
@@ -48,6 +49,7 @@ typedef pcl::PointXYZ PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
+std::string map_frame = "map";
 std::string tracking_frame = "odom";
 
 float voxel_size = 0.05;
@@ -115,6 +117,93 @@ filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   pass_filter.setFilterLimits(z_min, z_max);
   // pass_filter.setFilterLimitsNegative(true);
   pass_filter.filter(*processed);
+}
+
+void
+filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+{
+  // TODO Can merge remove nans and the filtering together. This way can save the copy Pointcloud inside the filtering
+
+  // TODO currently first copy pointcloud and then erase points, in order to be able to transform to map frame without changing the input.
+  // Try to think of a more efficient way ?
+
+  // TODO check if inpout and processed point on the same object, then can skip copy
+  PointCloud::Ptr temp_cloud(new PointCloud);
+  pcl::copyPointCloud(*input, *temp_cloud);
+
+  if (!drivable_region_)
+  {
+    ROS_WARN("Drivable region is not available. Skip filtering");
+    // processed = input;    // TODO dangerous if input is deleted afterwards?
+    processed = temp_cloud;
+    return;
+  }
+
+  // transform to map frame
+  if (!transformPointcloud(*temp_cloud, map_frame))
+  {
+    ROS_ERROR_STREAM("Failed to transform to " << map_frame);
+    return;
+  }
+  std::cout << "map frame_id: " << temp_cloud->header.frame_id << std::endl;
+
+  // we cannot just iterate and erase points, as this will invalidate the iterator
+  // method 1: mark all elements to be deleted with a special value. then use std::remove_if(begin, end, lambda: value==specialValue)
+  // complexity: O(N) for first loop to mark elements + O(N) for remove_if  => O(2*N)
+  // method 2: copy pointcloud into a temp cloud. Then delete processed->points. then go over all points in temp and copy only relevant ones intoprocessed
+  // complexity: O(N) for 1st copy (+ copy!) + O(N) for nd copy.
+  // maybe can be merged with the NaN removal, so should save a copy
+  // method 3 filter using ConditionalRemoval ????
+
+  processed->header = temp_cloud->header;
+  processed->is_dense = temp_cloud->is_dense;
+  processed->sensor_orientation_ = temp_cloud->sensor_orientation_;
+  processed->sensor_origin_ = temp_cloud->sensor_origin_;
+
+  processed->points.clear();
+  processed->points.reserve(temp_cloud->points.size());
+
+  for (const auto& point : temp_cloud->points)
+  {
+    const grid_map::Position position(point.x, point.y);
+
+    // if outside drivable region, keep it   // TODO try to remove that and see what happens
+    if (!drivable_region_->isInside(position))
+    {
+      processed->points.push_back(PointXYZI(point));
+      continue;
+    }
+
+    float value = drivable_region_->atPosition("drivable_region", position);
+    if (!std::isnan(value)) // not NaN => drivable => keep
+    {
+      processed->points.push_back(PointXYZI(point));
+    }
+  }
+
+  processed->height = temp_cloud->height;
+  processed->width = processed->points.size();
+
+  // // check each point is in drivable region or not. If not then erase point
+  // for (auto it = processed->points.begin(); it != processed->points.end(); ++it)
+  // {
+  //   const grid_map::Position position(it->x, it->y);
+
+  //   // if outside drivable region, keep it
+  //   if (!drivable_region_->isInside(position))
+  //   {
+  //     continue;
+  //   }
+
+  //   float value = drivable_region_->atPosition("drivable_region", position);
+  //   if (std::isnan(value))
+  //   {
+  //     // std::cout << "Removed element" << std::endl;
+  //     processed->points.erase(it);  // O(N+M), N=number of elements erased, M = number of elements after the last element deleted (moving)
+  //   }
+  // }
+  std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
+  std::cout << "processed pts: " << processed->points.size() << std::endl;
 }
 
 void differneceOfNormalsFiltering(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
@@ -211,6 +300,12 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (don_filter)
   {
     differneceOfNormalsFiltering(processed, processed);
+  }
+
+  // filter non-drivable parts
+  if (k_filter_drivable)
+  {
+    filterDrivable(processed, processed);
   }
 }
 
@@ -429,41 +524,21 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 void
 map_callback(const nav_msgs::OccupancyGrid& input_map)
 {
-  std::cout << "++++++++++++++++++ map_callback +++++++++++++++++++++" << std::endl;
+  std::cout << "============== map_callback ==============" << std::endl;
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // convert msg to GridMap
-  grid_map::GridMap grid_map;
-  bool success = grid_map::GridMapRosConverter::fromOccupancyGrid(input_map, "obstacles", grid_map);
+  drivable_region_ = std::make_unique<grid_map::GridMap>();
+  bool success = grid_map::GridMapRosConverter::fromOccupancyGrid(input_map, "drivable_region", *drivable_region_);
   if (!success)
   {
+    drivable_region_.reset();
     ROS_ERROR("Failed to convert OccupancyGrid msg to GridMap");
     return;
   }
 
-  // convert GridMap to pointcloud
-  // TODO as protoype use GridMap -> sensor_msgs::PointCloud2Ptr -> pcl::PointCloud since no out of the box alternative is available
-  // later should probably so it in a single copy
-  sensor_msgs::PointCloud2Ptr ros_cloud = boost::make_shared<sensor_msgs::PointCloud2>();
-  grid_map::GridMapRosConverter::toPointCloud(grid_map, std::vector<std::string>({"obstacles"}), "obstacles", *ros_cloud);
-  PointCloud::Ptr input_cloud(new PointCloud);
-  pcl::fromROSMsg(*ros_cloud, *input_cloud);
-
-  for (auto& p : input_cloud->points)
-  {
-    p.z = 0.0;
-  }
-
-  // publish processed pointcloud
-  proccessed_pub_.publish(input_cloud);
-
   auto t2 = std::chrono::high_resolution_clock::now();
-  std::cout << "map->pcl     : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
-
-  std::cout << "pts: " << input_cloud->points.size() << std::endl;
-  std::cout << "map input frame: " << input_cloud->header.frame_id << std::endl;
-
-  cluster_and_track(input_cloud);
+  std::cout << "got map      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
 }
 
 int
@@ -491,15 +566,8 @@ main(int argc, char** argv)
   }
   std::cout << "got 1st transform!" << std::endl;
 
-  ros::Subscriber input_sub;
-  if(!USE_MAP)
-  {
-      input_sub = nh.subscribe("pointcloud", 1, cloud_cb);
-  }
-  else
-  {
-    input_sub = nh.subscribe(map_topic, 1, map_callback);
-  }
+  ros::Subscriber input_sub = nh.subscribe("pointcloud", 1, cloud_cb);
+  ros::Subscriber map_sub = nh.subscribe(drivable_map_topic, 1, map_callback);
 
   for (int i = 0; i < 10; i++)
   {
