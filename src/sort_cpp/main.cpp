@@ -259,6 +259,11 @@ void differneceOfNormalsFiltering(const PointCloud::ConstPtr& input, PointCloud:
 bool
 processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
+  if(input->empty())
+  {
+    return false;
+  }
+
   // remove invalid pts (NaN, Inf)
   std::vector<int> indices;
   pcl::removeNaNFromPointCloud(*input, *processed, indices);
@@ -314,6 +319,11 @@ clusterCondition(const PointXYZI& a, const PointXYZI& b, float  /*dist*/)
 bool
 clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& clusters_indices)
 {
+  if (input->empty())
+  {
+    return false;
+  }
+
   // Cluster_indices is a vector containing one instance of PointIndices for each detected cluster.
   clusters_indices.clear();
 
@@ -360,6 +370,10 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   }
 
   std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
+  if (clusters_indices.empty())
+  {
+    return;
+  }
   auto t3 = std::chrono::high_resolution_clock::now();
 
   // get cluster centroid
@@ -394,6 +408,7 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
 
   auto t4 = std::chrono::high_resolution_clock::now();
 
+  // TODO this maybe do more sanity check on number of centroids ?
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
     tracker.Run(clusters_centroids, processed_cloud->header.stamp,
