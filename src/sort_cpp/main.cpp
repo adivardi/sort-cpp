@@ -45,7 +45,7 @@ std::unique_ptr<grid_map::GridMap> drivable_region_;
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
-typedef pcl::PointXYZ PointXYZI;
+typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
@@ -119,7 +119,7 @@ filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   pass_filter.filter(*processed);
 }
 
-void
+bool
 filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
   // TODO Can merge remove nans and the filtering together. This way can save the copy Pointcloud inside the filtering
@@ -136,14 +136,14 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
     ROS_WARN("Drivable region is not available. Skip filtering");
     // processed = input;    // TODO dangerous if input is deleted afterwards?
     processed = temp_cloud;
-    return;
+    return true;
   }
 
   // transform to map frame
   if (!transformPointcloud(*temp_cloud, map_frame))
   {
     ROS_ERROR_STREAM("Failed to transform to " << map_frame);
-    return;
+    return false;
   }
   std::cout << "map frame_id: " << temp_cloud->header.frame_id << std::endl;
 
@@ -204,6 +204,8 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   // }
   std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
   std::cout << "processed pts: " << processed->points.size() << std::endl;
+
+  return true;
 }
 
 void differneceOfNormalsFiltering(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
@@ -271,7 +273,7 @@ void differneceOfNormalsFiltering(const PointCloud::ConstPtr& input, PointCloud:
   std::cout << "dof: " << processed->points.size() << std::endl;
 }
 
-void
+bool
 processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
   // remove invalid pts (NaN, Inf)
@@ -290,7 +292,7 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (!transformPointcloud(*processed, processing_frame))
   {
     ROS_ERROR_STREAM("Failed to transform to " << processing_frame);
-    return;
+    return false;
   }
   std::cout << "processing frame_id: " << processed->header.frame_id << std::endl;
 
@@ -305,8 +307,13 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   // filter non-drivable parts
   if (k_filter_drivable)
   {
-    filterDrivable(processed, processed);
+    if (!filterDrivable(processed, processed))
+    {
+      return false;
+    }
   }
+
+  return true;
 }
 
 bool
@@ -321,7 +328,7 @@ clusterCondition(const PointXYZI& a, const PointXYZI& b, float  /*dist*/)
   // return (dist_3d_sq < (1.6 * 1.6));
 }
 
-void
+bool
 clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& clusters_indices)
 {
   // Cluster_indices is a vector containing one instance of PointIndices for each detected cluster.
@@ -331,7 +338,7 @@ clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& 
   if (!transformPointcloud(*input, tracking_frame))
   {
     ROS_ERROR_STREAM("Failed to transform to " << tracking_frame);
-    return;
+    return false;
   }
   std::cout << "tracking frame_id: " << input->header.frame_id << std::endl;
 
@@ -354,6 +361,8 @@ clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& 
   clusters_extractor.setInputCloud(input);
   /* Extract the clusters out of pc and save indices in clusters_indices.*/
   clusters_extractor.segment(clusters_indices);   // extract for notmal clustering
+
+  return true;
 }
 
 void
@@ -362,7 +371,10 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   auto t2 = std::chrono::high_resolution_clock::now();
 
   std::vector<pcl::PointIndices> clusters_indices;
-  clusterPointcloud(processed_cloud, clusters_indices);
+  if (!clusterPointcloud(processed_cloud, clusters_indices))
+  {
+    return;
+  }
 
   std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
   auto t3 = std::chrono::high_resolution_clock::now();
@@ -509,7 +521,10 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   std::cout << "++++++++++++++++++ cloud_cb +++++++++++++++++++++" << std::endl;
   auto t1 = std::chrono::high_resolution_clock::now();
   PointCloud::Ptr processed_cloud(new PointCloud);
-  processPointCloud(input_cloud, processed_cloud);
+  if(!processPointCloud(input_cloud, processed_cloud))
+  {
+    return;
+  }
 
   // publish processed pointcloud
   proccessed_pub_.publish(processed_cloud);
