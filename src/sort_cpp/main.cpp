@@ -49,7 +49,6 @@ typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
-std::string map_frame = "map";
 std::string tracking_frame = "odom";
 
 float voxel_size = 0.05;
@@ -124,9 +123,6 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
   // TODO Can merge remove nans and the filtering together. This way can save the copy Pointcloud inside the filtering
 
-  // TODO currently first copy pointcloud and then erase points, in order to be able to transform to map frame without changing the input.
-  // Try to think of a more efficient way ?
-
   // TODO check if inpout and processed point on the same object, then can skip copy
   PointCloud::Ptr temp_cloud(new PointCloud);
   pcl::copyPointCloud(*input, *temp_cloud);
@@ -134,15 +130,14 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (!drivable_region_)
   {
     ROS_WARN("Drivable region is not available. Skip filtering");
-    // processed = input;    // TODO dangerous if input is deleted afterwards?
     processed = temp_cloud;
     return true;
   }
 
   // transform to map frame
-  if (!transformPointcloud(*temp_cloud, map_frame))
+  if (!transformPointcloud(*temp_cloud, drivable_region_->getFrameId()))
   {
-    ROS_ERROR_STREAM("Failed to transform to " << map_frame);
+    ROS_ERROR_STREAM("Failed to transform to " << drivable_region_->getFrameId());
     return false;
   }
   std::cout << "map frame_id: " << temp_cloud->header.frame_id << std::endl;
@@ -153,55 +148,32 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   // method 2: copy pointcloud into a temp cloud. Then delete processed->points. then go over all points in temp and copy only relevant ones intoprocessed
   // complexity: O(N) for 1st copy (+ copy!) + O(N) for nd copy.
   // maybe can be merged with the NaN removal, so should save a copy
-  // method 3 filter using ConditionalRemoval ????
 
-  processed->header = temp_cloud->header;
-  processed->is_dense = temp_cloud->is_dense;
-  processed->sensor_orientation_ = temp_cloud->sensor_orientation_;
-  processed->sensor_origin_ = temp_cloud->sensor_origin_;
+  std::vector<int> keep_indices;
+  keep_indices.reserve(temp_cloud->size());
 
-  processed->points.clear();
-  processed->points.reserve(temp_cloud->points.size());
-
-  for (const auto& point : temp_cloud->points)
+  // for (const auto& point : temp_cloud->points)
+  for (size_t i = 0; i < temp_cloud->size(); ++i)
   {
+    const PointXYZI point = temp_cloud->points[i];
     const grid_map::Position position(point.x, point.y);
 
-    // if outside drivable region, keep it   // TODO try to remove that and see what happens
+    // if outside drivable region, keep it
     if (!drivable_region_->isInside(position))
     {
-      processed->points.push_back(PointXYZI(point));
+      keep_indices.push_back(i);
       continue;
     }
 
-    float value = drivable_region_->atPosition("drivable_region", position);
+    const float value = drivable_region_->atPosition("drivable_region", position);
     if (!std::isnan(value)) // not NaN => drivable => keep
     {
-      processed->points.push_back(PointXYZI(point));
+      keep_indices.push_back(i);
     }
   }
 
-  processed->height = temp_cloud->height;
-  processed->width = processed->points.size();
+  pcl::copyPointCloud(*temp_cloud, keep_indices, *processed);
 
-  // // check each point is in drivable region or not. If not then erase point
-  // for (auto it = processed->points.begin(); it != processed->points.end(); ++it)
-  // {
-  //   const grid_map::Position position(it->x, it->y);
-
-  //   // if outside drivable region, keep it
-  //   if (!drivable_region_->isInside(position))
-  //   {
-  //     continue;
-  //   }
-
-  //   float value = drivable_region_->atPosition("drivable_region", position);
-  //   if (std::isnan(value))
-  //   {
-  //     // std::cout << "Removed element" << std::endl;
-  //     processed->points.erase(it);  // O(N+M), N=number of elements erased, M = number of elements after the last element deleted (moving)
-  //   }
-  // }
   std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
   std::cout << "processed pts: " << processed->points.size() << std::endl;
 
