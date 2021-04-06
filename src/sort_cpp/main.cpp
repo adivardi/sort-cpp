@@ -121,6 +121,8 @@ filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 bool
 filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
+  auto t1 = std::chrono::high_resolution_clock::now();
+
   // TODO Can merge remove nans and the filtering together. This way can save the copy Pointcloud inside the filtering
 
   // TODO check if inpout and processed point on the same object, then can skip copy
@@ -133,6 +135,7 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
     processed = temp_cloud;
     return true;
   }
+  auto t2 = std::chrono::high_resolution_clock::now();
 
   // transform to map frame
   if (!transformPointcloud(*temp_cloud, drivable_region_->getFrameId()))
@@ -140,6 +143,8 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
     ROS_ERROR_STREAM("Failed to transform to " << drivable_region_->getFrameId());
     return false;
   }
+  auto t3 = std::chrono::high_resolution_clock::now();
+
   std::cout << "map frame_id: " << temp_cloud->header.frame_id << std::endl;
 
   // we cannot just iterate and erase points, as this will invalidate the iterator
@@ -173,6 +178,12 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   }
 
   pcl::copyPointCloud(*temp_cloud, keep_indices, *processed);
+
+  auto t4 = std::chrono::high_resolution_clock::now();
+  std::cout << "map copy     : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
+  std::cout << "map transform: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
+  std::cout << "map filter   : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
+  std::cout << "map total    : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t1).count() << " us" << std::endl;
 
   std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
   std::cout << "processed pts: " << processed->points.size() << std::endl;
@@ -476,14 +487,14 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
 
   auto t9 = std::chrono::high_resolution_clock::now();
 
-  std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count() << " ms" << std::endl;
-  std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count() << " ms" << std::endl;
-  std::cout << "track        : " << std::chrono::duration_cast<std::chrono::milliseconds>(t5 - t4).count() << " ms" << std::endl;
-  std::cout << "print tracks : " << std::chrono::duration_cast<std::chrono::milliseconds>(t6 - t5).count() << " ms" << std::endl;
-  std::cout << "pub tracks   : " << std::chrono::duration_cast<std::chrono::milliseconds>(t7 - t6).count() << " ms" << std::endl;
-  std::cout << "pub clusters : " << std::chrono::duration_cast<std::chrono::milliseconds>(t8 - t7).count() << " ms" << std::endl;
-  std::cout << "pub obstacles: " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - t8).count() << " ms" << std::endl;
-  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::milliseconds>(t9 - t2).count() << " ms" << std::endl;
+  std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
+  std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
+  std::cout << "track        : " << std::chrono::duration_cast<std::chrono::microseconds>(t5 - t4).count() << " us" << std::endl;
+  std::cout << "print tracks : " << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count() << " us" << std::endl;
+  std::cout << "pub tracks   : " << std::chrono::duration_cast<std::chrono::microseconds>(t7 - t6).count() << " us" << std::endl;
+  std::cout << "pub clusters : " << std::chrono::duration_cast<std::chrono::microseconds>(t8 - t7).count() << " us" << std::endl;
+  std::cout << "pub obstacles: " << std::chrono::duration_cast<std::chrono::microseconds>(t9 - t8).count() << " us" << std::endl;
+  std::cout << "loop         : " << std::chrono::duration_cast<std::chrono::microseconds>(t9 - t2).count() << " us" << std::endl;
   std::cout << "cloud size : " << processed_cloud->points.size() << std::endl;
 }
 
@@ -502,7 +513,7 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
   proccessed_pub_.publish(processed_cloud);
 
   auto t2 = std::chrono::high_resolution_clock::now();
-  std::cout << "process      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
+  std::cout << "process      : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
   std::cout << "input size   : " << input_cloud->points.size() << std::endl;
 
   cluster_and_track(processed_cloud);
@@ -525,7 +536,7 @@ map_callback(const nav_msgs::OccupancyGrid& input_map)
   }
 
   auto t2 = std::chrono::high_resolution_clock::now();
-  std::cout << "got map      : " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
+  std::cout << "got map      : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
 }
 
 int
