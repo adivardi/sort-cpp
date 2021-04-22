@@ -593,7 +593,7 @@ main(int argc, char** argv)
 
   proccessed_pub_ = nh.advertise<PointCloud>("processed_pointcloud", 1);
 
-  obstacles_pub_ = nh.advertise<enway_msgs::ObstacleArray>("obstacles", 1);
+  obstacles_pub_ = nh.advertise<enway_msgs::ObstacleArray>("dynamic_obstacles", 1);
 
   ros::spin();
 }
@@ -602,6 +602,8 @@ void
 publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tracks)
 {
   auto obstacles = boost::make_shared<enway_msgs::ObstacleArray>();
+  obstacles->header.stamp = header.stamp;
+  obstacles->header.frame_id = header.frame_id;
 
   for (const auto& track : tracks)
   {
@@ -613,9 +615,9 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
       obstacle.header = header;
       obstacle.type = enway_msgs::Obstacle::OTHER;
 
-      obstacle.pose.position.x = state(0);
-      obstacle.pose.position.y = state(1);
-      obstacle.pose.position.z = state(2);
+      obstacle.pose.pose.position.x = state(0);
+      obstacle.pose.pose.position.y = state(1);
+      obstacle.pose.pose.position.z = state(2);
 
       // get orientation from velocity direction
       tf::Vector3 velocity_vector (state(3), state(4), state(5));
@@ -636,17 +638,17 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
       }
       // TODO add covariance to pose so can add the KF covariance ?
 
-      obstacle.pose.orientation.w = q.w();
-      obstacle.pose.orientation.x = q.x();
-      obstacle.pose.orientation.y = q.y();
-      obstacle.pose.orientation.z = q.z();
+      obstacle.pose.pose.orientation.w = q.w();
+      obstacle.pose.pose.orientation.x = q.x();
+      obstacle.pose.pose.orientation.y = q.y();
+      obstacle.pose.pose.orientation.z = q.z();
 
-      obstacle.velocities.twist.linear.x = state(3);
-      obstacle.velocities.twist.linear.y = state(4);
-      obstacle.velocities.twist.linear.z = state(5);
-      obstacle.velocities.twist.angular.x = 0;
-      obstacle.velocities.twist.angular.y = 0;
-      obstacle.velocities.twist.angular.z = 0;
+      obstacle.velocity.twist.linear.x = state(3);
+      obstacle.velocity.twist.linear.y = state(4);
+      obstacle.velocity.twist.linear.z = state(5);
+      obstacle.velocity.twist.angular.x = 0;
+      obstacle.velocity.twist.angular.y = 0;
+      obstacle.velocity.twist.angular.z = 0;
 
       obstacle.size.x = 0;
       obstacle.size.y = 0;
