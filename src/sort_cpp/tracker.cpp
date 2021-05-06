@@ -196,8 +196,8 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
                                             const float dist_threshold_sq,
                                             const float max_distance_sq)
 {
-    std::cout << "dist_threshold_sq: " << dist_threshold_sq << std::endl;
-    std::cout << "max_distance_sq: " << max_distance_sq << std::endl;
+    // std::cout << "dist_threshold_sq: " << dist_threshold_sq << std::endl;
+    // std::cout << "max_distance_sq: " << max_distance_sq << std::endl;
 
     // Set all detection as unmatched if no tracks existing
     if (tracks.empty()) {
