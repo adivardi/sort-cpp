@@ -408,6 +408,18 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
 
   auto t4 = std::chrono::high_resolution_clock::now();
 
+  for (size_t i = 0; i < clusters_centroids.size(); i++)
+  {
+    // print detection to compute detection noise
+    // dynamic_s180_b2e06f23d_2021-02-09-17-42-14.bag
+    if (clusters_centroids[i].centroid(0) < -3 && clusters_centroids[i].centroid(0) > -4 && clusters_centroids[i].centroid(1) < -22 && clusters_centroids[i].centroid(1) > -24)
+    // pedestrian_cetran_s210_2021-02-09-17-55-52.bag
+    // if (clusters_centroids[i].centroid(0) < -3 && clusters_centroids[i].centroid(0) > -4 && clusters_centroids[i].centroid(1) < -23 && clusters_centroids[i].centroid(1) > -25)
+    {
+      ROS_INFO_STREAM("detection: " << clusters_centroids[i].centroid(0) << ";" << clusters_centroids[i].centroid(1) << ";" << clusters_centroids[i].centroid(2));
+    }
+  }
+
   // TODO this maybe do more sanity check on number of centroids ?
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
