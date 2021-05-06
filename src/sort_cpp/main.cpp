@@ -636,7 +636,6 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
         q.setZ(0);
         q.setW(1);
       }
-      // TODO add covariance to pose so can add the KF covariance ?
 
       obstacle.pose.pose.orientation.w = q.w();
       obstacle.pose.pose.orientation.x = q.x();
@@ -649,6 +648,18 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
       obstacle.velocity.twist.angular.x = 0;
       obstacle.velocity.twist.angular.y = 0;
       obstacle.velocity.twist.angular.z = 0;
+
+      // TODO add covariance to pose and velocity from the KF covariance ?
+
+      // TODO get bounding polygon as:
+      // 1. minimal bounding box:
+      // find convex hull. for each edge in hull, find box along edge's direction. then find minimum box from all boxes
+      // https://gis.stackexchange.com/questions/22895/finding-minimum-area-rectangle-for-given-points
+
+      // 2. bounding box along velocity:
+      // check ObstaclePointClustering::polygonDimensions.
+
+      // 3. convex hall of all points? maybe easier? but computation compare to 2?
 
       obstacle.size.x = 0;
       obstacle.size.y = 0;

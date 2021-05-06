@@ -60,6 +60,8 @@ Track::Track() : kf_(num_states, num_obs) {
             0, 0, 1, 0, 0, 0;
 
     // Covariance matrix of process noise   num_states, num_states
+    // A large process noise covariance can partly compensate a poor motion model,
+    // but large process noise covariances increases the level of ambiguity for data
     kf_.Q_ <<
             1, 0, 0, 0,    0,    0,
             0, 1, 0, 0,    0,    0,
