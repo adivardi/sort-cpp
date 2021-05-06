@@ -49,7 +49,7 @@ typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
 std::string processing_frame = "base_link";
-std::string tracking_frame = "odom";
+std::string tracking_frame = "map";
 
 float voxel_size = 0.05;
 float z_min = 0.45;
