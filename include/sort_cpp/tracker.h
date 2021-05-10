@@ -57,7 +57,8 @@ public:
 
     // void Run(const std::vector<cv::Rect>& detections);
     std::map<int, Detection> Run(const std::vector<Detection>& detections, uint64_t timestamp,
-                                 const float dist_threshold_sq, const float max_distance_sq);
+                                 const float dist_threshold_sq, const float max_distance_sq,
+                                 std::map<int, Eigen::VectorXd>& predicted_states);
 
     std::map<int, Track> GetTracks();
 

@@ -76,10 +76,11 @@ Tracker tracker;
 std::vector<ros::Publisher> clusters_pubs_;
 ros::Publisher proccessed_pub_;
 ros::Publisher marker_pub_;
+ros::Publisher predicted_states_markers_pub_;
 ros::Publisher obstacles_pub_;
 
 void publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks);
-
+void publishPredictedStateAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks, const std::map<int, Eigen::VectorXd>& predicted_states);
 void publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tracks);
 
 bool
@@ -408,12 +409,15 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
 
   auto t4 = std::chrono::high_resolution_clock::now();
 
+  std::map<int, Eigen::VectorXd> predicted_states;
+
   // TODO this maybe do more sanity check on number of centroids ?
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
     tracker.Run(clusters_centroids, processed_cloud->header.stamp,
     tracking_distance_thresh * tracking_distance_thresh,
-    tracking_max_distance * tracking_max_distance);
+    tracking_max_distance * tracking_max_distance,
+    predicted_states);
   /*** Tracker update done ***/
 
   auto t5 = std::chrono::high_resolution_clock::now();
@@ -456,6 +460,11 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   if (marker_pub_.getNumSubscribers() > 0)
   {
     publishTrackAsMarker(input_header, tracks);
+  }
+
+  if (predicted_states_markers_pub_.getNumSubscribers() > 0)
+  {
+    publishPredictedStateAsMarker(input_header, tracks, predicted_states);
   }
 
   auto t7 = std::chrono::high_resolution_clock::now();
@@ -590,6 +599,7 @@ main(int argc, char** argv)
   }
 
   marker_pub_ = nh.advertise<visualization_msgs::MarkerArray>("tracks", 1);
+  predicted_states_markers_pub_ = nh.advertise<visualization_msgs::MarkerArray>("predicted_states", 1);
 
   proccessed_pub_ = nh.advertise<PointCloud>("processed_pointcloud", 1);
 
@@ -751,4 +761,77 @@ publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>&
   }
 
   marker_pub_.publish(array);
+}
+
+void
+publishPredictedStateAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks,
+                              const std::map<int, Eigen::VectorXd>& predicted_states)
+{
+  visualization_msgs::MarkerArray array;
+
+  for (const auto& state_pair : predicted_states)
+  {
+    if (tracks.count(state_pair.first) > 0)
+    {
+      const auto track = tracks.at(state_pair.first);
+      if (track.coast_cycles_ < kMaxCoastCycles && track.hit_streak_ >= kMinHits)
+      {
+        const auto state = state_pair.second;
+
+        visualization_msgs::Marker point;
+        point.header = header;
+        point.ns = "Predicted States";
+        point.action = visualization_msgs::Marker::ADD;
+        point.id = state_pair.first;
+        point.type = visualization_msgs::Marker::SPHERE;
+        point.color.g = 1.0;
+        point.color.a = 1.0;
+
+        constexpr double k_marker_lifetime_sec = 0.5;
+        point.lifetime = ros::Duration(k_marker_lifetime_sec);
+
+        point.pose.position.x = state(0);
+        point.pose.position.y = state(1);
+        point.pose.position.z = state(2);
+
+        point.pose.orientation.w = 1.0;
+        point.pose.orientation.x = 0.0;
+        point.pose.orientation.y = 0.0;
+        point.pose.orientation.z = 0.0;
+
+        constexpr double k_point_diameter = 0.5;
+        point.scale.x = k_point_diameter;
+        point.scale.y = k_point_diameter;
+        point.scale.z = k_point_diameter;
+
+        array.markers.push_back(point);
+
+        visualization_msgs::Marker text;
+        text.header = header;
+        text.ns = "Predicted States texts";
+        text.action = visualization_msgs::Marker::ADD;
+        text.id = state_pair.first;
+        text.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+        text.color.b = 1.0;
+        text.color.a = 1.0;
+        text.lifetime = ros::Duration(k_marker_lifetime_sec);
+
+        text.text = std::to_string(state_pair.first);
+
+        text.pose.position.x = state(0);
+        text.pose.position.y = state(1);
+        text.pose.position.z = state(2);
+
+        text.pose.orientation.w = 1.0;
+        text.pose.orientation.x = 0.0;
+        text.pose.orientation.y = 0.0;
+        text.pose.orientation.z = 0.0;
+
+        text.scale.z = 1.8;
+
+        array.markers.push_back(text);
+      }
+    }
+  }
+  predicted_states_markers_pub_.publish(array);
 }

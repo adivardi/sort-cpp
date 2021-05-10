@@ -259,7 +259,8 @@ void Tracker::AssociateDetectionsToTrackers(const std::vector<Detection>& detect
 
 // void Tracker::Run(const std::vector<cv::Rect>& detections) {
 std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& detections, uint64_t timestamp,
-                                               const float dist_threshold_sq, const float max_distance_sq)
+                                               const float dist_threshold_sq, const float max_distance_sq,
+                                               std::map<int, Eigen::VectorXd>& predicted_states)
 {
     if (prev_update_time_)
     {
@@ -269,10 +270,12 @@ std::map<int, Tracker::Detection> Tracker::Run(const std::vector<Detection>& det
 
     prev_update_time_ = std::make_optional(timestamp);
 
+    predicted_states.clear();
     /*** Predict internal tracks from previous frame ***/
     for (auto &track : tracks_) {
         track.second.setDtInModel(dt_);
         track.second.Predict();
+        predicted_states.emplace(track.first, track.second.GetState()); // keep predicted states for debugging
     }
 
     // Hash-map between track ID and associated detection
