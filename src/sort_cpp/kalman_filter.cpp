@@ -28,8 +28,9 @@ KalmanFilter::KalmanFilter(unsigned int num_states, unsigned int num_obs) :
     // Covariance matrix of observation noise
     R_ = Eigen::MatrixXd::Zero(num_obs, num_obs);
 
-    log_likelihood_delta_ = 0.0;
-    NIS_ = 0.0;
+    metrics_.log_likelihood_delta_ = 0.0;
+    metrics_.NIS_average_ = 0.0;
+    metrics_.NIS_vector_.clear();
 }
 
 
@@ -55,14 +56,12 @@ void KalmanFilter::Update(const Eigen::VectorXd& z) {
     Eigen::VectorXd z_predict = PredictionToObservation(x_predict_);
 
     // y - innovation, z - real observation, z_predict - predicted observation
-    Eigen::VectorXd y = z - z_predict;
+    y_ = z - z_predict;
 
     Eigen::MatrixXd Ht = H_.transpose();
 
-    // S - innovation covariance
-    Eigen::MatrixXd S = H_ * P_predict_ * Ht + R_;
-
-    NIS_ = y.transpose() * S.inverse() * y;
+    // S - innovation covariance matrix
+    S_ = H_ * P_predict_ * Ht + R_;
 
 //    std::cout << "P_predict = " << P_predict_.diagonal().transpose() << std::endl;
 //
@@ -76,22 +75,43 @@ void KalmanFilter::Update(const Eigen::VectorXd& z) {
 //    std::cout << y << std::endl;
 //
 //    std::cout << "S = " << std::endl;
-//    std::cout << S << std::endl;
-//
-//    std::cout << "NIS = " << NIS_ << std::endl;
-
+//    std::cout << S_ << std::endl;
 
     // K - Kalman gain
-    Eigen::MatrixXd K = P_predict_ * Ht * S.inverse();
+    Eigen::MatrixXd K = P_predict_ * Ht * S_.inverse();
 
     // Updated state estimation
-    x_ = x_predict_ + K * y;
+    x_ = x_predict_ + K * y_;
 
     Eigen::MatrixXd I = Eigen::MatrixXd::Identity(num_states_, num_states_);
     // Joseph form
     //P_ = (I - K * H_) * P_predict_ * (I - K * H_).transpose() + K * R_ * K.transpose();
     // Optimal gain
     P_ = (I - K * H_) * P_predict_;
+
+    // evaluation metrics
+    float NIS = y_.transpose() * S_.inverse() * y_;     // normalized innovation error squared
+
+    // metrics_.N_ += 1;
+    metrics_.NIS_vector_.push_back(NIS);
+
+    if (metrics_.NIS_vector_.size() <= max_size_metrics)
+    {
+        metrics_.NIS_average_ = 0;
+        for (const auto& q : metrics_.NIS_vector_)
+        {
+            metrics_.NIS_average_ += q;
+        }
+        metrics_.NIS_average_ = metrics_.NIS_average_ / metrics_.NIS_vector_.size();
+    }
+    else
+    {
+        float first = metrics_.NIS_vector_.front();
+        metrics_.NIS_vector_.pop_front();
+        metrics_.NIS_average_ = metrics_.NIS_average_ + (NIS - first) / max_size_metrics;
+    }
+
+    // std::cout << "NIS = " << metrics_.NIS_average_ << std::endl;
 }
 
 

@@ -3,8 +3,10 @@
 #include <iostream>
 #include <eigen3/Eigen/Dense>
 
+#include <deque>
 // abstract class for Kalman filter
 // implementation could be KF/EKF/UKF...
+
 class KalmanFilter {
 public:
     /**
@@ -68,7 +70,20 @@ public:
 
     unsigned int num_states_, num_obs_;
 
-    float log_likelihood_delta_;
+    // innovation vector
+    Eigen::VectorXd y_;
 
-    float NIS_;
+    // innovation covariance matrix
+    Eigen::MatrixXd S_;
+
+public:
+    static constexpr int max_size_metrics = 10;
+    struct KalmanFilterMetrics
+    {
+        float log_likelihood_delta_;
+        float NIS_average_;
+        std::deque<float> NIS_vector_;
+    };
+
+    KalmanFilterMetrics metrics_;
 };

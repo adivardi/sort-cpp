@@ -45,6 +45,11 @@ std::unique_ptr<grid_map::GridMap> drivable_region_;
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
+// metrics
+bool EVALUATE_METRICS = true;
+constexpr float chi2_df10_025 = 20.483;
+constexpr float chi2_df10_975 = 3.247;
+
 typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
@@ -436,6 +441,7 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
       // However, the total number of false positive will increase more (from experiments),
       // which leads to MOTA decrease
       // Developer can export coasted cycles if false negative tracks is critical in the system
+
       if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
       {
         double v = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
@@ -510,6 +516,46 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   }
 
   auto t9 = std::chrono::high_resolution_clock::now();
+
+  if (EVALUATE_METRICS)
+  {
+    for (const auto& trk : tracks)
+    {
+      const auto state = trk.second.GetState();
+      if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
+      {
+          const auto S = trk.second.GetS();
+          if (S.size() > 0)
+          {
+            std::cout << "Sx: " << S(0,0) << std::endl;
+          }
+
+          const auto y = trk.second.GetY();
+          if (y.size() > 0)
+          {
+            std::cout << "y: " << y.transpose() << std::endl;
+          }
+          auto [nis_avg, n, nis] = trk.second.GetNIS();
+          std::cout << "nis: " << nis << std::endl;
+
+          float nnis = n * nis_avg;
+
+          int pass = 0;
+          if (n == KalmanFilter::max_size_metrics)
+          {
+            if (nnis >= chi2_df10_975 && nnis <= chi2_df10_025)
+            {
+              pass = 1;
+            }
+            else
+            {
+              pass = -1;
+            }
+          }
+          std::cout << "NIS score: " << trk.first << " : " << nis_avg << " ( " << n << " ) = " << nnis << "  =>  " << pass << std::endl;
+        }
+    }
+  }
 
   std::cout << "cluster      : " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
   std::cout << "centroids    : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
@@ -799,7 +845,7 @@ publishPredictedStateAsMarker(const std_msgs::Header& header, const std::map<int
         point.pose.orientation.y = 0.0;
         point.pose.orientation.z = 0.0;
 
-        constexpr double k_point_diameter = 0.5;
+        constexpr double k_point_diameter = 0.1;
         point.scale.x = k_point_diameter;
         point.scale.y = k_point_diameter;
         point.scale.z = k_point_diameter;

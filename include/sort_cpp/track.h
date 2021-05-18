@@ -25,7 +25,9 @@ public:
     Eigen::VectorXd GetState() const;
     Eigen::MatrixXd GetCovariance() const;
 
-    float GetNIS() const;
+    std::tuple<float, int, float> GetNIS() const;
+    Eigen::MatrixXd GetS() const;
+    Eigen::VectorXd GetY() const;
 
     int coast_cycles_ = 0, hit_streak_ = 0;
 

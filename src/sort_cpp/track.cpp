@@ -158,10 +158,25 @@ Eigen::MatrixXd Track::GetCovariance() const
     return kf_.P_;
 }
 
-float Track::GetNIS() const {
-    return kf_.NIS_;
+std::tuple<float, int, float> Track::GetNIS() const {
+    float nis = 0;
+    if (!kf_.metrics_.NIS_vector_.empty())
+    {
+        nis = kf_.metrics_.NIS_vector_.back();
+    }
+
+    return {kf_.metrics_.NIS_average_, kf_.metrics_.NIS_vector_.size(), nis};
 }
 
+Eigen::MatrixXd Track::GetS() const
+{
+    return kf_.S_;
+}
+
+Eigen::VectorXd Track::GetY() const
+{
+    return kf_.y_;
+}
 
 /**
  * Takes a bounding box in the form [x, y, width, height] and returns z in the form
