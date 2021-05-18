@@ -60,6 +60,7 @@ public:
     Eigen::MatrixXd F_;
 
     // Covariance matrix of process noise
+    double q_std_;
     Eigen::MatrixXd Q_;
 
     // measurement matrix

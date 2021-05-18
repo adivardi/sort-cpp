@@ -62,19 +62,27 @@ Track::Track() : kf_(num_states, num_obs) {
     // Covariance matrix of process noise   num_states, num_states
     // A large process noise covariance can partly compensate a poor motion model,
     // but large process noise covariances increases the level of ambiguity for data
+
+    // random acceleration motion model: Q = [T^4/4 T^3/2; T^3/2 T^2] * std_aw^2
+    // where std_aw is the standard deviation of a white noise acceleration
+    // using T^4/4 for the Q(position) gives slightly over-confident results, mainly when an object is static
+    // so increase it slightly to get better NIS values
+    kf_.q_std_ = 1.0;
     kf_.Q_ <<
-            1, 0, 0, 0,    0,    0,
-            0, 1, 0, 0,    0,    0,
-            0, 0, 1, 0,    0,    0,
-            0, 0, 0, 0.01, 0,    0,
-            0, 0, 0, 0,    0.01, 0,
-            0, 0, 0, 0,    0,    0.01;
+            0.00625, 0, 0, 0.0005,    0,    0,
+            0, 0.00625, 0, 0,    0.0005,    0,
+            0, 0, 0.00625, 0,    0,    0.0005,
+            0.0005, 0, 0, 0.01, 0,    0,
+            0, 0.0005, 0, 0,    0.01, 0,
+            0, 0, 0.0005, 0,    0,    0.01;
+
+    kf_.Q_ *= kf_.q_std_;
 
     // Covariance matrix of observation noise   num_obs, num_obs
     kf_.R_ <<
-            1, 0, 0,
-            0, 1, 0,
-            0, 0, 1;
+            0.01, 0, 0,
+            0, 0.01, 0,
+            0, 0, 0.01;
 }
 
 void Track::setDtInModel(double dt)

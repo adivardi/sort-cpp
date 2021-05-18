@@ -19,6 +19,7 @@ KalmanFilter::KalmanFilter(unsigned int num_states, unsigned int num_obs) :
     P_predict_ = Eigen::MatrixXd::Zero(num_states, num_states);
 
     // Covariance matrix of process noise
+    q_std_ = 0.0;
     Q_ = Eigen::MatrixXd::Zero(num_states, num_states);
 
     /*** Update ***/
