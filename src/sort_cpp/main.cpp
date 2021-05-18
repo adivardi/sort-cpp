@@ -433,7 +433,7 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
 
   if (PRINT_TRACKS)
   {
-    for (auto &trk : tracks)
+    for (const auto& trk : tracks)
     {
       const auto state = trk.second.GetState();
       // Note that we will not export coasted tracks
@@ -478,7 +478,7 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   if (VIS_CLUSTERS_BY_TRACKS)
   {
     long unsigned int i = 0;
-    for (auto &trk : tracks)
+    for (const auto& trk : tracks)
     {
       if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
       {
