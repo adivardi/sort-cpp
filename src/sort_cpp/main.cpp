@@ -46,7 +46,7 @@ bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
 
 // metrics
-bool EVALUATE_METRICS = true;
+bool EVALUATE_METRICS = false;
 constexpr float chi2_df10_025 = 20.483;
 constexpr float chi2_df10_975 = 3.247;
 
