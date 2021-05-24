@@ -61,7 +61,7 @@ float z_min = 0.45;
 float z_max = 2.5;
 float clustering_tolerance = 2.5;
 float min_pts_in_cluster = 5;
-float clustering_dist_2d_thresh = 2.0;
+float clustering_dist_2d_thresh = 1.2;
 float clustering_dist_2d_thresh_sq = clustering_dist_2d_thresh * clustering_dist_2d_thresh;
 
 bool don_filter = false;
