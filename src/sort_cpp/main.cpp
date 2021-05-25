@@ -36,6 +36,8 @@
 #include "sort_cpp/tracker.h"
 #include "sort_cpp/utils.h"
 
+#include <enway_msgs/ObjectTrack.h>
+#include <enway_msgs/ObjectTrackArray.h>
 #include <enway_msgs/ObstacleArray.h>
 
 bool k_filter_drivable = true;
@@ -83,6 +85,7 @@ ros::Publisher proccessed_pub_;
 ros::Publisher marker_pub_;
 ros::Publisher predicted_states_markers_pub_;
 ros::Publisher obstacles_pub_;
+ros::Publisher tracks_pub_;
 
 void publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks);
 void publishPredictedStateAsMarker(const std_msgs::Header& header, const std::map<int, Track>& tracks, const std::map<int, Eigen::VectorXd>& predicted_states);
@@ -428,11 +431,16 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   auto t5 = std::chrono::high_resolution_clock::now();
 
   const auto tracks = tracker.GetTracks();
+  std_msgs::Header input_header = fromPCL(processed_cloud->header);
 
   std::cout << "dt: " << tracker.GetDT() << std::endl;
 
-  if (PRINT_TRACKS)
+  if (PRINT_TRACKS || tracks_pub_.getNumSubscribers() > 0)
   {
+    auto tracks_msg = boost::make_shared<enway_msgs::ObjectTrackArray>();
+    tracks_msg->header.stamp = input_header.stamp;
+    tracks_msg->header.frame_id = input_header.frame_id;
+
     for (const auto& trk : tracks)
     {
       const auto state = trk.second.GetState();
@@ -445,35 +453,69 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
       if (trk.second.coast_cycles_ < kMaxCoastCycles && trk.second.hit_streak_ >= kMinHits)
       {
         double v = std::sqrt(state(3) * state(3) + state(4) * state(4) + state(5) * state(5));
-        // Print to terminal for debugging
-        std::cout << "track id: " << trk.first
-                  << ", cluster id: " << track_to_detection_associations[trk.first].cluster_id
-                  << ", state: " << state(0) << ", " << state(1) << ", " << state(2)
-                  << ", v: " << v
-                  << " (" << state(3) << ", " << state(4) << ", " << state(5) << ")"
-                  << " Hit Streak = " << trk.second.hit_streak_
-                  << " Coast Cycles = " << trk.second.coast_cycles_
-                  // << " covariance = " << covar.transpose()
-                  << std::endl;
+        if (PRINT_TRACKS)
+        {
+          // Print to terminal for debugging
+          std::cout << "track id: " << trk.first
+                    << ", cluster id: " << track_to_detection_associations[trk.first].cluster_id
+                    << ", state: " << state(0) << ", " << state(1) << ", " << state(2)
+                    << ", v: " << v
+                    << " (" << state(3) << ", " << state(4) << ", " << state(5) << ")"
+                    << " Hit Streak = " << trk.second.hit_streak_
+                    << " Coast Cycles = " << trk.second.coast_cycles_
+                    // << " covariance = " << trk.second.GetCovariance().transpose()
+                    << std::endl;
+        }
+        if (tracks_pub_.getNumSubscribers() > 0)
+        {
+          enway_msgs::ObjectTrack object_track;
+          object_track.header = input_header;
+
+          object_track.track_id = trk.first;
+          object_track.cluster_id = track_to_detection_associations[trk.first].cluster_id;
+          object_track.centroid.x = state(0);
+          object_track.centroid.y = state(1);
+          object_track.centroid.z = state(2);
+          object_track.velocity_norm = v;
+          object_track.velocity.x = state(3);
+          object_track.velocity.y = state(4);
+          object_track.velocity.z = state(5);
+          object_track.hit_streak = trk.second.hit_streak_;
+          object_track.coast_cycles = trk.second.coast_cycles_;
+
+          tracks_msg->tracks.push_back(object_track);
+        }
       }
+    }
+
+    if (tracks_pub_.getNumSubscribers() > 0)
+    {
+      tracks_pub_.publish(tracks_msg);
     }
   }
 
   auto t6 = std::chrono::high_resolution_clock::now();
-
-  std_msgs::Header input_header = fromPCL(processed_cloud->header);
 
   if (marker_pub_.getNumSubscribers() > 0)
   {
     publishTrackAsMarker(input_header, tracks);
   }
 
+  auto t7 = std::chrono::high_resolution_clock::now();
+
   if (predicted_states_markers_pub_.getNumSubscribers() > 0)
   {
     publishPredictedStateAsMarker(input_header, tracks, predicted_states);
   }
 
-  auto t7 = std::chrono::high_resolution_clock::now();
+  auto t8 = std::chrono::high_resolution_clock::now();
+
+  // if (tracks_pub_.getNumSubscribers() > 0)
+  // {
+  //   publishTracks(input_header, tracks);
+  // }
+
+  auto t9 = std::chrono::high_resolution_clock::now();
 
   if (VIS_CLUSTERS_BY_TRACKS)
   {
@@ -644,12 +686,13 @@ main(int argc, char** argv)
     clusters_pubs_.push_back(pub);
   }
 
-  marker_pub_ = nh.advertise<visualization_msgs::MarkerArray>("tracks", 1);
+  marker_pub_ = nh.advertise<visualization_msgs::MarkerArray>("tracks_markers", 1);
   predicted_states_markers_pub_ = nh.advertise<visualization_msgs::MarkerArray>("predicted_states", 1);
 
   proccessed_pub_ = nh.advertise<PointCloud>("processed_pointcloud", 1);
 
   obstacles_pub_ = nh.advertise<enway_msgs::ObstacleArray>("dynamic_obstacles", 1);
+  tracks_pub_ = nh.advertise<enway_msgs::ObjectTrackArray>("tracks_array", 1);
 
   ros::spin();
 }
