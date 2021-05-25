@@ -675,6 +675,21 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
       obstacle.pose.pose.position.y = state(1);
       obstacle.pose.pose.position.z = state(2);
 
+      // TODO this is not really accurate as this is the tracking state covariance (x, y, z, vx, vy, vz),
+      // not the pose covariance (x, y, z, roll, pitch, yaw)
+      // also add velocity covariance to velocity??
+      // or maybe remove covariance from pose and velocity (or just pose? obstacle_point_clustering has velocity covariance)
+      // and add a separate covariance to the message? or just add to the debug info?
+
+      const Eigen::MatrixXd covariance = track.second.GetCovariance();
+      for (int i = 0; i < 6; ++i)
+      {
+        for (int j = 0; j < 6; ++j)
+        {
+          obstacle.pose.covariance[i * 6 + j] = covariance(i, j);
+        }
+      }
+
       // get orientation from velocity direction
       tf::Vector3 velocity_vector (state(3), state(4), state(5));
       tf::Vector3 origin (1, 0, 0);
