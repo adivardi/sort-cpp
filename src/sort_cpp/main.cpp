@@ -720,6 +720,7 @@ publishObstacles(const std_msgs::Header& header, const std::map<int, Track>& tra
   auto obstacles = boost::make_shared<enway_msgs::ObstacleArray>();
   obstacles->header.stamp = header.stamp;
   obstacles->header.frame_id = header.frame_id;
+  obstacles->source = "lidar_tracker";
 
   for (const auto& track : tracks)
   {
