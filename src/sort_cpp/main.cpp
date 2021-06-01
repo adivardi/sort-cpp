@@ -423,6 +423,10 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   std::map<int, Eigen::VectorXd> predicted_states;
 
   // TODO this maybe do more sanity check on number of centroids ?
+
+  // TODO TODO TODO important! need to run tracker even if input cloud is empty or no clusters detected!
+  // So that it keep running the predict step and tracking obstacles
+  // Also must publish even if no obstacles detected, so path checker will know all the objects have disappeared!
   /*** Run SORT tracker ***/
   std::map<int, Tracker::Detection> track_to_detection_associations =
     tracker.Run(clusters_centroids, processed_cloud->header.stamp,
@@ -836,10 +840,18 @@ publishTrackAsMarker(const std_msgs::Header& header, const std::map<int, Track>&
       tf::Vector3 origin (1, 0, 0);
 
       // q.w = sqrt((origin.length() ^ 2) * (v2.Length ^ 2)) + dotproduct(v1, v2);
-      auto w = (origin.length() * velocity_vector.length()) + tf::tfDot(origin, velocity_vector);
+      auto w = (origin.length() * velocity_vector.length()) + tf::tfDot(origin, velocity_vector); // can use sqrt(norm_sq * norm_sq) to save one sqrt operation
       tf::Vector3 a = origin.cross(velocity_vector);
       tf::Quaternion q(a.x(), a.y(), a.z(), w);
       q.normalize();
+
+      if (std::isnan(q.w()) || std::isnan(q.x()) || std::isnan(q.y()) || std::isnan(q.z()))
+      {
+        q.setW(1.0);
+        q.setX(0.0);
+        q.setY(0.0);
+        q.setZ(0.0);
+      }
 
       heading.pose.orientation.w = q.w();
       heading.pose.orientation.x = q.x();
