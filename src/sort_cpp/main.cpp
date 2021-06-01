@@ -40,13 +40,26 @@
 #include <enway_msgs/ObjectTrackArray.h>
 #include <enway_msgs/ObstacleArray.h>
 
+bool k_filter_z_value = false;
+std::string filter_z_value_frame = "base_link";
+float z_min = 0.45;
+float z_max = 2.5;
+
 bool k_filter_drivable = true;
 std::string drivable_map_topic = "/navigation/enway_map/map_drivable_region";
 std::unique_ptr<grid_map::GridMap> drivable_region_;
 
+bool k_filter_heightmap = true;
+// std::string height_map_topic = "/navigation/enway_map/map_static_elevation";
+std::string height_map_topic = "/navigation/enway_map/global_map";
+std::string k_static_elevation_layer = "static_elevation";
+std::unique_ptr<grid_map::GridMap> height_map_;
+float above_ground_min_threshold = 0.45;
+float above_ground_max_threshold = 2.5;
+
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
-bool PRINT_TIMES = false;
+bool PRINT_TIMES = true;
 
 // metrics
 bool EVALUATE_METRICS = false;
@@ -56,12 +69,9 @@ constexpr float chi2_df10_975 = 3.247;
 typedef pcl::PointXYZI PointXYZI;
 typedef pcl::PointCloud<PointXYZI> PointCloud;
 
-std::string processing_frame = "base_link";
 std::string tracking_frame = "map";
 
 float voxel_size = 0.05;
-float z_min = 0.45;
-float z_max = 2.5;
 float clustering_tolerance = 2.5;
 float min_pts_in_cluster = 5;
 float clustering_dist_2d_thresh = 1.2;
@@ -114,11 +124,19 @@ transformPointcloud(PointCloud& cloud, std::string frame)
   return true;
 }
 
-void
-filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+bool
+filterZValue(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
   // TODO can be improved using normals and height
   // currently just cut between z_min and z_max
+
+  // transform_pointcloud to processing frame
+  if (!transformPointcloud(*processed, filter_z_value_frame))
+  {
+    ROS_ERROR_STREAM("Failed to transform to " << filter_z_value_frame);
+    return false;
+  }
+  std::cout << "processing frame_id: " << processed->header.frame_id << std::endl;
 
   pcl::PassThrough<PointXYZI> pass_filter;
   pass_filter.setInputCloud(input);
@@ -126,6 +144,8 @@ filterGround(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   pass_filter.setFilterLimits(z_min, z_max);
   // pass_filter.setFilterLimitsNegative(true);
   pass_filter.filter(*processed);
+
+  return true;
 }
 
 bool
@@ -192,10 +212,87 @@ filterDrivable(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   auto t4 = std::chrono::high_resolution_clock::now();
   if (PRINT_TIMES)
   {
-    std::cout << "map copy     : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
-    std::cout << "map transform: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
-    std::cout << "map filter   : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
-    std::cout << "map total    : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t1).count() << " us" << std::endl;
+    std::cout << "drivabl copy : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
+    std::cout << "drivabl tf   : " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
+    std::cout << "drivab filter: " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
+    std::cout << "drivabl total: " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t1).count() << " us" << std::endl;
+
+    std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
+    std::cout << "processed pts: " << processed->points.size() << std::endl;
+  }
+  return true;
+}
+
+bool
+filterHeightMap(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+{
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  // TODO Can merge remove NaNs and all the filtering together. This way can save the copy Pointcloud inside the filtering
+
+  // TODO check if inpout and processed point on the same object, then can skip copy
+  PointCloud::Ptr temp_cloud(new PointCloud);
+  pcl::copyPointCloud(*input, *temp_cloud);
+
+  if (!height_map_)
+  {
+    ROS_WARN("Height map is not available. Skip filtering");
+    processed = temp_cloud;
+    return true;
+  }
+  auto t2 = std::chrono::high_resolution_clock::now();
+
+  // transform to map frame
+  if (!transformPointcloud(*temp_cloud, height_map_->getFrameId()))
+  {
+    ROS_ERROR_STREAM("Failed to transform to " << height_map_->getFrameId());
+    return false;
+  }
+  auto t3 = std::chrono::high_resolution_clock::now();
+
+  std::cout << "height map frame_id: " << temp_cloud->header.frame_id << std::endl;
+
+  // we cannot just iterate and erase points, as this will invalidate the iterator
+  // method 1: mark all elements to be deleted with a special value. then use std::remove_if(begin, end, lambda: value==specialValue)
+  // complexity: O(N) for first loop to mark elements + O(N) for remove_if  => O(2*N)
+  // method 2: copy pointcloud into a temp cloud. Then delete processed->points. then go over all points in temp and copy only relevant ones into processed
+  // complexity: O(N) for 1st copy (+ copy!) + O(N) for 2nd copy.
+  // maybe can be merged with all the other filtering, so should save a copy
+
+  std::vector<int> keep_indices;
+  keep_indices.reserve(temp_cloud->size());
+
+  // for (const auto& point : temp_cloud->points)
+  for (size_t i = 0; i < temp_cloud->size(); ++i)
+  {
+    const PointXYZI point = temp_cloud->points[i];
+    const grid_map::Position position(point.x, point.y);
+
+    // if outside height map, keep it TODO ?
+    if (!height_map_->isInside(position))
+    {
+      // keep_indices.push_back(i);
+      continue;
+    }
+
+    // TODO also need to cut a a cetrain height above ground
+    const float ground_height = height_map_->atPosition(k_static_elevation_layer, position);  // TODO thiis number is weird! maybe in cm? but no negatives...
+    const float height_off_ground = point.z - ground_height;
+    if (height_off_ground >= above_ground_min_threshold && height_off_ground <= above_ground_max_threshold)
+    {
+      keep_indices.push_back(i);
+    }
+  }
+
+  pcl::copyPointCloud(*temp_cloud, keep_indices, *processed);
+
+  auto t4 = std::chrono::high_resolution_clock::now();
+  if (PRINT_TIMES)
+  {
+    std::cout << "height copy  : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
+    std::cout << "height tf    : " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() << " us" << std::endl;
+    std::cout << "height filter: " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " us" << std::endl;
+    std::cout << "height total : " << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t1).count() << " us" << std::endl;
 
     std::cout << "input pts: " << temp_cloud->points.size() << std::endl;
     std::cout << "processed pts: " << processed->points.size() << std::endl;
@@ -273,6 +370,7 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 {
   if(input->empty())
   {
+    ROS_WARN("Empty input");
     return false;
   }
 
@@ -288,16 +386,14 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   vox_filter.setLeafSize(voxel_size, voxel_size, voxel_size);
   vox_filter.filter(*processed);
 
-  // transform_pointcloud to processing frame
-  if (!transformPointcloud(*processed, processing_frame))
+  // filter based on z value
+  if (k_filter_z_value)
   {
-    ROS_ERROR_STREAM("Failed to transform to " << processing_frame);
-    return false;
+    if (!filterZValue(processed, processed))
+    {
+      return false;
+    }
   }
-  // std::cout << "processing frame_id: " << processed->header.frame_id << std::endl;
-
-  // remove ground
-  filterGround(processed, processed);
 
   if (don_filter)
   {
@@ -308,6 +404,15 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (k_filter_drivable)
   {
     if (!filterDrivable(processed, processed))
+    {
+      return false;
+    }
+  }
+
+  // filter based on height from ground
+  if (k_filter_heightmap)
+  {
+    if (!filterHeightMap(processed, processed))
     {
       return false;
     }
@@ -650,9 +755,9 @@ cloud_cb(const PointCloud::ConstPtr& input_cloud)
 }
 
 void
-map_callback(const nav_msgs::OccupancyGrid& input_map)
+drivable_map_callback(const nav_msgs::OccupancyGrid& input_map)
 {
-  std::cout << "============== map_callback ==============" << std::endl;
+  std::cout << "============== drivable_map_callback ==============" << std::endl;
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // convert msg to GridMap
@@ -668,7 +773,31 @@ map_callback(const nav_msgs::OccupancyGrid& input_map)
   auto t2 = std::chrono::high_resolution_clock::now();
   if(PRINT_TIMES)
   {
-    std::cout << "got map      : " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
+    std::cout << "got drivable map: " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
+  }
+}
+
+void
+height_map_callback(const grid_map_msgs::GridMapPtr& input_map)
+{
+  std::cout << "============== height_map_callback ==============" << std::endl;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  // convert msg to GridMap
+  height_map_ = std::make_unique<grid_map::GridMap>();
+
+  bool success = grid_map::GridMapRosConverter::fromMessage(*input_map, *height_map_);
+  if (!success)
+  {
+    height_map_.reset();
+    ROS_ERROR("Failed to convert OccupancyGrid msg to GridMap");
+    return;
+  }
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  if(PRINT_TIMES)
+  {
+    std::cout << "got height map: " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " us" << std::endl;
   }
 }
 
@@ -698,7 +827,8 @@ main(int argc, char** argv)
   std::cout << "got 1st transform!" << std::endl;
 
   ros::Subscriber input_sub = nh.subscribe("pointcloud", 1, cloud_cb);
-  ros::Subscriber map_sub = nh.subscribe(drivable_map_topic, 1, map_callback);
+  ros::Subscriber drivable_map_sub = nh.subscribe(drivable_map_topic, 1, drivable_map_callback);
+  ros::Subscriber height_map_sub = nh.subscribe(height_map_topic, 1, height_map_callback);
 
   for (int i = 0; i < 10; i++)
   {
