@@ -50,12 +50,18 @@ std::string drivable_map_topic = "/navigation/enway_map/map_drivable_region";
 std::unique_ptr<grid_map::GridMap> drivable_region_;
 
 bool k_filter_heightmap = true;
-// std::string height_map_topic = "/navigation/enway_map/map_static_elevation";
 std::string height_map_topic = "/navigation/enway_map/global_map";
 std::string k_static_elevation_layer = "static_elevation";
 std::unique_ptr<grid_map::GridMap> height_map_;
 float above_ground_min_threshold = 0.45;
 float above_ground_max_threshold = 2.5;
+
+bool filter_by_range = false;
+std::string filter_by_range_frame = "base_link";
+double y_min = -100;
+double y_max = 100;
+double x_min = -100;
+double x_max = 100;
 
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
@@ -130,18 +136,46 @@ filterZValue(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   // TODO can be improved using normals and height
   // currently just cut between z_min and z_max
 
-  // transform_pointcloud to processing frame
+  // transform_pointcloud to filterZValue frame
   if (!transformPointcloud(*processed, filter_z_value_frame))
   {
     ROS_ERROR_STREAM("Failed to transform to " << filter_z_value_frame);
     return false;
   }
-  std::cout << "processing frame_id: " << processed->header.frame_id << std::endl;
+  std::cout << "filterZValue frame_id: " << processed->header.frame_id << std::endl;
 
   pcl::PassThrough<PointXYZI> pass_filter;
   pass_filter.setInputCloud(input);
   pass_filter.setFilterFieldName("z");
   pass_filter.setFilterLimits(z_min, z_max);
+  // pass_filter.setFilterLimitsNegative(true);
+  pass_filter.filter(*processed);
+
+  return true;
+}
+
+bool
+filterByRange(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+{
+  // transform_pointcloud to filterByRange frame
+  if (!transformPointcloud(*processed, filter_by_range_frame))
+  {
+    ROS_ERROR_STREAM("Failed to transform to " << filter_by_range_frame);
+    return false;
+  }
+  std::cout << "filterByRange frame_id: " << processed->header.frame_id << std::endl;
+
+
+  pcl::PassThrough<PointXYZI> pass_filter;
+  pass_filter.setInputCloud(input);
+  pass_filter.setFilterFieldName("y");
+  pass_filter.setFilterLimits(y_min, y_max);
+  // pass_filter.setFilterLimitsNegative(true);
+  pass_filter.filter(*processed);
+
+  pass_filter.setInputCloud(processed);
+  pass_filter.setFilterFieldName("x");
+  pass_filter.setFilterLimits(x_min, x_max);
   // pass_filter.setFilterLimitsNegative(true);
   pass_filter.filter(*processed);
 
@@ -390,6 +424,15 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (k_filter_z_value)
   {
     if (!filterZValue(processed, processed))
+    {
+      return false;
+    }
+  }
+
+  // filter based on range
+  if (filter_by_range)
+  {
+    if (!filterByRange(processed, processed))
     {
       return false;
     }
