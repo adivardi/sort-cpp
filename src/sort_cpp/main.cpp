@@ -436,13 +436,13 @@ clusterCondition(const PointXYZI& a, const PointXYZI& b, float  /*dist*/)
 bool
 clusterPointcloud(const PointCloud::Ptr& input, std::vector<pcl::PointIndices>& clusters_indices)
 {
-  if (input->empty())
-  {
-    return false;
-  }
-
   // Cluster_indices is a vector containing one instance of PointIndices for each detected cluster.
   clusters_indices.clear();
+
+  if (input->empty())
+  {
+    return true;
+  }
 
   // transform to tracking frame
   if (!transformPointcloud(*input, tracking_frame))
@@ -486,11 +486,7 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
     return;
   }
 
-  // std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
-  if (clusters_indices.empty())
-  {
-    return;
-  }
+  std::cout << "cluster no.: " << clusters_indices.size() << std::endl;
   auto t3 = std::chrono::high_resolution_clock::now();
 
   // get cluster centroid
@@ -498,29 +494,32 @@ cluster_and_track(const PointCloud::Ptr& processed_cloud)
   // std::vector<Eigen::VectorXd> clusters_centroids;
   std::vector<Tracker::Detection> clusters_centroids;
 
-  int i = 0;
-  for (const pcl::PointIndices& cluster_ids : clusters_indices)
-  // for (auto cluster_it = clusters_indices.begin(); cluster_it != clusters_indices.end(); ++cluster_it)
+  if (!clusters_indices.empty())
   {
-    Eigen::Vector4f centroid_homogenous;
-    pcl::compute3DCentroid(*processed_cloud, cluster_ids, centroid_homogenous); // in homogenous coords
+    int i = 0;
+    for (const pcl::PointIndices& cluster_ids : clusters_indices)
+    // for (auto cluster_it = clusters_indices.begin(); cluster_it != clusters_indices.end(); ++cluster_it)
+    {
+      Eigen::Vector4f centroid_homogenous;
+      pcl::compute3DCentroid(*processed_cloud, cluster_ids, centroid_homogenous); // in homogenous coords
 
-    Eigen::VectorXd centroid_xyz(3);
-    centroid_xyz << centroid_homogenous(0), centroid_homogenous(1), centroid_homogenous(2);
+      Eigen::VectorXd centroid_xyz(3);
+      centroid_xyz << centroid_homogenous(0), centroid_homogenous(1), centroid_homogenous(2);
 
-    // clusters_centroids.push_back(centroid_xyz);
-    Tracker::Detection det;
-    det.centroid = centroid_xyz;
-    det.cluster_id = i;
-    clusters_centroids.push_back(det);
+      // clusters_centroids.push_back(centroid_xyz);
+      Tracker::Detection det;
+      det.centroid = centroid_xyz;
+      det.cluster_id = i;
+      clusters_centroids.push_back(det);
 
-    // Extract the cluster pointcloud
-    PointCloud::Ptr cluster_pointcloud(new PointCloud);
-    pcl::copyPointCloud(*processed_cloud, cluster_ids.indices, *cluster_pointcloud);
+      // Extract the cluster pointcloud
+      PointCloud::Ptr cluster_pointcloud(new PointCloud);
+      pcl::copyPointCloud(*processed_cloud, cluster_ids.indices, *cluster_pointcloud);
 
-    // clusters.push_back(cluster_pointcloud);
-    clusters[i] = cluster_pointcloud;
-    i++;
+      // clusters.push_back(cluster_pointcloud);
+      clusters[i] = cluster_pointcloud;
+      i++;
+    }
   }
 
   auto t4 = std::chrono::high_resolution_clock::now();
