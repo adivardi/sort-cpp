@@ -22,6 +22,9 @@
 #include <pcl/point_types.h>
 #include <pcl/segmentation/conditional_euclidean_clustering.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/conditional_euclidean_clustering.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <nav_msgs/OccupancyGrid.h>
@@ -62,6 +65,12 @@ double y_min = -100;
 double y_max = 100;
 double x_min = -100;
 double x_max = 100;
+
+bool filter_ransac = true;
+std::string filter_ransac_frame = "base_link";
+double ransac_plane_max_iter = 200; // 100
+double ransac_plane_dist_thresh = 0.45; //0.01;  // Distance to the model threshold
+double ransac_plane_eps_angle = 0.1;   // Set the angle epsilon (delta) threshold - maximum allowed difference between the model normal and the given axis in radians
 
 bool VIS_CLUSTERS_BY_TRACKS = false;
 bool PRINT_TRACKS = true;
@@ -131,18 +140,18 @@ transformPointcloud(PointCloud& cloud, std::string frame)
 }
 
 bool
-filterZValue(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+filterZValue(PointCloud::Ptr& input, PointCloud::Ptr& processed)
 {
   // TODO can be improved using normals and height
   // currently just cut between z_min and z_max
 
   // transform_pointcloud to filterZValue frame
-  if (!transformPointcloud(*processed, filter_z_value_frame))
+  if (!transformPointcloud(*input, filter_z_value_frame)) // TODO this changes input, should not and have iinput as ConstPtr
   {
     ROS_ERROR_STREAM("Failed to transform to " << filter_z_value_frame);
     return false;
   }
-  std::cout << "filterZValue frame_id: " << processed->header.frame_id << std::endl;
+  std::cout << "filterZValue frame_id: " << input->header.frame_id << std::endl;
 
   pcl::PassThrough<PointXYZI> pass_filter;
   pass_filter.setInputCloud(input);
@@ -155,15 +164,15 @@ filterZValue(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
 }
 
 bool
-filterByRange(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
+filterByRange(PointCloud::Ptr& input, PointCloud::Ptr& processed)
 {
   // transform_pointcloud to filterByRange frame
-  if (!transformPointcloud(*processed, filter_by_range_frame))
+  if (!transformPointcloud(*input, filter_by_range_frame)) // TODO this changes input, should not and have iinput as ConstPtr
   {
     ROS_ERROR_STREAM("Failed to transform to " << filter_by_range_frame);
     return false;
   }
-  std::cout << "filterByRange frame_id: " << processed->header.frame_id << std::endl;
+  std::cout << "filterByRange frame_id: " << input->header.frame_id << std::endl;
 
 
   pcl::PassThrough<PointXYZI> pass_filter;
@@ -178,6 +187,56 @@ filterByRange(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   pass_filter.setFilterLimits(x_min, x_max);
   // pass_filter.setFilterLimitsNegative(true);
   pass_filter.filter(*processed);
+
+  return true;
+}
+
+bool
+filterRansac(PointCloud::Ptr& input, PointCloud::Ptr& processed)
+{
+  // transform_pointcloud to filter_ransac_frame
+  if (!transformPointcloud(*input, filter_ransac_frame)) // TODO this changes input, should not and have iinput as ConstPtr
+  {
+    ROS_ERROR_STREAM("Failed to transform to " << filter_ransac_frame);
+    return false;
+  }
+  std::cout << "filterRansac frame_id: " << input->header.frame_id << std::endl;
+
+  pcl::SACSegmentation<PointXYZI> seg;
+  pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+  pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+  seg.setOptimizeCoefficients(true);
+  seg.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
+  seg.setMethodType(pcl::SAC_RANSAC);
+  seg.setAxis(Eigen::Vector3f(0, 0, 1));
+
+  seg.setMaxIterations(ransac_plane_max_iter);
+  seg.setEpsAngle(ransac_plane_eps_angle);
+  seg.setDistanceThreshold(ransac_plane_dist_thresh);  // floor distance
+
+  seg.setInputCloud(input);
+  seg.segment(*inliers, *coefficients);
+
+  if (inliers->indices.size() == 0)
+  {
+    ROS_WARN("Could not estimate a planar model for the given dataset.");
+    processed = input;
+    return false;
+  }
+
+  std::cout << "coef: " << *coefficients << std::endl;
+
+  // REMOVE THE FLOOR FROM THE CLOUD
+  pcl::ExtractIndices<PointXYZI> extract;
+  extract.setInputCloud(input);
+  extract.setIndices(inliers);
+  extract.setNegative(true);  // true removes the indices, false leaves only the indices
+  extract.filter(*processed);
+
+  // // EXTRACT THE FLOOR FROM THE CLOUD
+  // extract.setNegative(false);  // true removes the indices, false leaves only the indices
+  // extract.filter(*out_onlyfloor_cloud_ptr);
 
   return true;
 }
@@ -447,6 +506,14 @@ processPointCloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& processed)
   if (k_filter_drivable)
   {
     if (!filterDrivable(processed, processed))
+    {
+      return false;
+    }
+  }
+
+  if (filter_ransac)
+  {
+    if (!filterRansac(processed, processed))
     {
       return false;
     }
