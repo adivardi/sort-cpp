@@ -31,6 +31,7 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/impl/transforms.hpp>
 #include <pcl_ros/transforms.h>
+#include <ros/console.h>
 #include <ros/ros.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
@@ -120,6 +121,11 @@ void publishObstacles(const std_msgs::Header& header, const std::map<int, Track>
 bool
 transformPointcloud(PointCloud& cloud, std::string frame)
 {
+  if (cloud.header.frame_id == frame)
+  {
+    return true;
+  }
+
   // transform_pointcloud to processing frame
   tf2_ros::TransformListener tf_listener_(tf_buffer_);
   try
